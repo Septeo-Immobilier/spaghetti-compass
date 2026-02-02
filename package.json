@@ -1,0 +1,51 @@
+{
+  "name": "spaghetti-compass",
+  "version": "0.1.0",
+  "description": "CLI tool to explore and visualize code dependency relations",
+  "type": "module",
+  "main": "dist/cli/index.js",
+  "bin": {
+    "spaghetti-compass": "./bin/spaghetti-compass.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "test": "vitest",
+    "test:run": "vitest run",
+    "lint": "eslint src --ext .ts",
+    "lint:fix": "eslint src --ext .ts --fix",
+    "format": "prettier --write \"src/**/*.ts\"",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "dependency",
+    "graph",
+    "imports",
+    "exports",
+    "typescript",
+    "javascript",
+    "cli",
+    "analysis"
+  ],
+  "author": "",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "files": [
+    "dist",
+    "bin"
+  ],
+  "dependencies": {
+    "commander": "^12.1.0",
+    "typescript": "^5.9.3"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.2",
+    "@types/node": "^25.2.0",
+    "eslint": "^9.39.2",
+    "prettier": "^3.8.1",
+    "typescript-eslint": "^8.54.0",
+    "vitest": "^4.0.18"
+  }
+}
