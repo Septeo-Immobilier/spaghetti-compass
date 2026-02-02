@@ -31,8 +31,10 @@ export function formatText(graph: DependencyGraph): string {
   lines.push('═'.repeat(65));
   lines.push(` ${SYMBOLS.entryPoint} Entry Point: ${getEntryPointDisplay(graph)}`);
   lines.push(` ${SYMBOLS.context} Context: ${graph.context.rootPath}`);
+  const aliasCount = graph.stats.aliasResolutions || 0;
+  const aliasSuffix = aliasCount > 0 ? ` (${aliasCount} via alias)` : '';
   lines.push(
-    ` ${SYMBOLS.stats} Stats: ${graph.stats.internalNodes} internal, ${graph.stats.externalNodes} external, ${graph.stats.thirdPartyNodes} third-party, ${graph.stats.unresolvedEdges} unresolved`
+    ` ${SYMBOLS.stats} Stats: ${graph.stats.internalNodes} internal, ${graph.stats.externalNodes} external, ${graph.stats.thirdPartyNodes} third-party, ${graph.stats.unresolvedEdges} unresolved${aliasSuffix}`
   );
   lines.push('═'.repeat(65));
   lines.push('');
@@ -89,7 +91,10 @@ export function formatText(graph: DependencyGraph): string {
       const prefix = isLast ? SYMBOLS.lastBranch : SYMBOLS.branch;
       const node = graph.nodes.find((n) => n.id === edge.to);
       const lineInfo = edge.line ? ` (line ${edge.line})` : '';
-      lines.push(`    ${prefix} ${node?.name || edge.to}${lineInfo}`);
+      const aliasInfo = edge.aliasInfo 
+        ? ` (→ ${edge.aliasInfo.pattern}, file not found)`
+        : '';
+      lines.push(`    ${prefix} ${node?.name || edge.to}${lineInfo}${aliasInfo}`);
     }
   }
 
@@ -179,7 +184,9 @@ function formatEdgeGroup(
     if (!node) continue;
 
     const displayName = node.path || node.name;
-    lines.push(`${prefix}${branchSymbol} ${displayName}`);
+    // Afficher l'alias original si disponible
+    const aliasSuffix = edge.aliasInfo ? ` (${edge.aliasInfo.original})` : '';
+    lines.push(`${prefix}${branchSymbol} ${displayName}${aliasSuffix}`);
 
     // Afficher les dépendances transitives (seulement pour les fichiers internes)
     if (node.location === 'internal' && !visited.has(node.id)) {

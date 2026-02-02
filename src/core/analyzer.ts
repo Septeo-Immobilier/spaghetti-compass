@@ -14,6 +14,7 @@ import type {
 import { DependencyGraphBuilder } from './graph.js';
 import { PathResolver } from './resolver.js';
 import { TypeScriptParser } from '../parser/typescript.js';
+import { TsConfigResolver } from './tsconfig.js';
 
 /**
  * Options d'analyse
@@ -35,9 +36,29 @@ export class Analyzer {
   private visited: Set<string> = new Set();
 
   constructor(context: ContextInfo) {
-    this.resolver = new PathResolver(context);
+    // Découvrir automatiquement tsconfig et package.json si non fournis
+    let enhancedContext = { ...context };
+    
+    if (!enhancedContext.tsConfigPath && !enhancedContext.projectRoot) {
+      // Essayer de trouver depuis le rootPath
+      const tsConfigPath = TsConfigResolver.findTsConfig(context.rootPath);
+      const packageJsonPath = TsConfigResolver.findPackageJson(context.rootPath);
+      
+      if (tsConfigPath) {
+        enhancedContext.tsConfigPath = tsConfigPath;
+      }
+      
+      if (packageJsonPath) {
+        enhancedContext.projectRoot = path.dirname(packageJsonPath);
+      } else if (tsConfigPath) {
+        // Fallback sur le dossier du tsconfig
+        enhancedContext.projectRoot = path.dirname(tsConfigPath);
+      }
+    }
+
+    this.resolver = new PathResolver(enhancedContext);
     this.parser = new TypeScriptParser();
-    this.graphBuilder = new DependencyGraphBuilder(context);
+    this.graphBuilder = new DependencyGraphBuilder(enhancedContext);
   }
 
   /**
@@ -112,6 +133,20 @@ export class Analyzer {
     const resolvedPath = this.resolver.resolve(moduleSpecifier, fromFile);
     const location = this.resolver.classifyLocation(resolvedPath, moduleSpecifier);
 
+    // Vérifier si c'est un alias TypeScript résolu
+    let aliasInfo: { original: string; pattern: string; resolvedVia: string } | undefined;
+    const tsConfigResolver = (this.resolver as any).tsConfigResolver;
+    if (tsConfigResolver) {
+      const aliasResult = tsConfigResolver.resolveAlias(moduleSpecifier, fromFile);
+      if (aliasResult.matchedPattern) {
+        aliasInfo = {
+          original: aliasResult.original,
+          pattern: aliasResult.matchedPattern,
+          resolvedVia: 'tsconfig.json',
+        };
+      }
+    }
+
     // Créer le noeud cible
     const targetId = resolvedPath || moduleSpecifier;
     const targetNode: GraphNode = {
@@ -133,6 +168,7 @@ export class Analyzer {
       resolved: resolved && !!resolvedPath,
       line,
       importedNames: importedNames.length > 0 ? importedNames : undefined,
+      aliasInfo,
     };
     this.graphBuilder.addEdge(edge);
 

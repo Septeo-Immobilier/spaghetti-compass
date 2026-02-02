@@ -10,6 +10,7 @@ import type { ContextInfo, AnalyzeOptions } from '../types/index.js';
 import { Analyzer } from '../core/analyzer.js';
 import { formatText } from '../output/text.js';
 import { formatJson } from '../output/json.js';
+import { TsConfigResolver } from '../core/tsconfig.js';
 
 // Exit codes
 const EXIT_SUCCESS = 0;
@@ -76,6 +77,9 @@ program
   .option('-i, --include <glob...>', 'Include patterns (default: **/*.ts, **/*.js)')
   .option('-e, --exclude <glob...>', 'Exclude patterns (default: **/node_modules/**)')
   .option('--no-transitive', 'Show only direct dependencies')
+  .option('-t, --tsconfig <path>', 'Path to tsconfig.json (default: auto-discover)')
+  .option('-r, --root <path>', 'Project root directory (default: auto-discover from package.json)')
+  .option('--no-tsconfig', 'Disable TypeScript alias resolution')
   .action(async (entry: string, options) => {
     try {
       // Parser l'entrée
@@ -106,6 +110,62 @@ program
         options.include || [],
         options.exclude || []
       );
+
+      // Gérer les options tsconfig
+      let tsConfigPath: string | undefined;
+      let projectRoot: string | undefined;
+
+      if (options.noTsconfig) {
+        // Désactiver la résolution d'alias
+        tsConfigPath = undefined;
+      } else if (options.tsconfig) {
+        // Utiliser le tsconfig spécifié
+        const customTsConfig = path.resolve(options.tsconfig);
+        if (!fs.existsSync(customTsConfig)) {
+          console.error(`Error: TSConfig file not found: ${customTsConfig}`);
+          process.exit(EXIT_FILE_NOT_FOUND);
+        }
+        tsConfigPath = customTsConfig;
+      } else {
+        // Auto-découverte depuis le fichier d'entrée
+        const discoveredTsConfig = TsConfigResolver.findTsConfig(entryPath);
+        if (discoveredTsConfig) {
+          tsConfigPath = discoveredTsConfig;
+        } else {
+          console.log('ℹ️  No tsconfig.json found, alias resolution disabled');
+        }
+      }
+
+      // Gérer l'option --root
+      if (options.root) {
+        const customRoot = path.resolve(options.root);
+        if (!fs.existsSync(customRoot)) {
+          console.error(`Error: Root directory not found: ${customRoot}`);
+          process.exit(EXIT_CONTEXT_NOT_FOUND);
+        }
+        if (!fs.statSync(customRoot).isDirectory()) {
+          console.error(`Error: Root must be a directory: ${customRoot}`);
+          process.exit(EXIT_CONTEXT_NOT_FOUND);
+        }
+        projectRoot = customRoot;
+      } else {
+        // Auto-découverte depuis le fichier d'entrée
+        const discoveredPackageJson = TsConfigResolver.findPackageJson(entryPath);
+        if (discoveredPackageJson) {
+          projectRoot = path.dirname(discoveredPackageJson);
+        } else if (tsConfigPath) {
+          // Fallback sur le dossier du tsconfig
+          projectRoot = path.dirname(tsConfigPath);
+        }
+      }
+
+      // Enrichir le contexte avec tsconfig et projectRoot
+      if (tsConfigPath) {
+        context.tsConfigPath = tsConfigPath;
+      }
+      if (projectRoot) {
+        context.projectRoot = projectRoot;
+      }
 
       // Options d'analyse
       const analyzeOptions: AnalyzeOptions = {
