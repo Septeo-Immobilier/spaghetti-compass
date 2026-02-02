@@ -13,12 +13,53 @@ CLI tool to explore and visualize code dependency relations in JavaScript/TypeSc
 
 ## Installation
 
+### From npm (when published)
+
 ```bash
 # Global installation
 npm install -g spaghetti-compass
 
 # Or use via npx
 npx spaghetti-compass explore <file>
+```
+
+### From source (local development)
+
+```bash
+# Clone the repository
+git clone https://github.com/your-username/spaghetti-compass.git
+cd spaghetti-compass
+
+# Install dependencies
+npm install
+
+# Build the project
+npm run build
+
+# Install globally from local source
+npm install -g .
+
+# Or use npm link for development (auto-updates on rebuild)
+npm link
+```
+
+After local installation, the `spaghetti-compass` command is available globally.
+
+## Quick Start
+
+```bash
+# Explore a file's dependencies
+spaghetti-compass explore src/main.ts
+
+# Explore with a specific context directory
+spaghetti-compass explore src/main.ts --context src/
+
+# Output as JSON
+spaghetti-compass explore src/main.ts --json
+
+# Show help
+spaghetti-compass --help
+spaghetti-compass explore --help
 ```
 
 ## Usage
