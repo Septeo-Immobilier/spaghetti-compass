@@ -80,6 +80,7 @@ program
   .option('-t, --tsconfig <path>', 'Path to tsconfig.json (default: auto-discover)')
   .option('-r, --root <path>', 'Project root directory (default: auto-discover from package.json)')
   .option('--no-tsconfig', 'Disable TypeScript alias resolution')
+  .option('--hyperlinks', 'Enable clickable hyperlinks in terminal output', false)
   .action(async (entry: string, options) => {
     try {
       // Parser l'entrée
@@ -174,6 +175,11 @@ program
         json: options.json,
       };
 
+      // Options de formatage
+      const formatOptions = {
+        hyperlinks: options.hyperlinks,
+      };
+
       // Analyser
       const analyzer = new Analyzer(context);
       const graph = await analyzer.analyze(entryPath, {
@@ -197,7 +203,7 @@ program
       if (options.json) {
         console.log(formatJson(graph));
       } else {
-        console.log(formatText(graph));
+        console.log(formatText(graph, formatOptions));
       }
 
       process.exit(EXIT_SUCCESS);

@@ -120,6 +120,18 @@ spaghetti-compass explore src/main.ts -c src/ --no-transitive
 spaghetti-compass explore src/main.ts -c src/ --exclude "**/*.test.ts" --exclude "**/*.spec.ts"
 ```
 
+### Clickable hyperlinks
+
+```bash
+# Enable clickable hyperlinks in terminal output (Ctrl+Click to navigate)
+spaghetti-compass explore src/main.ts -c src/ --hyperlinks
+
+# Works with function exploration too
+spaghetti-compass explore src/services/auth.ts:login --hyperlinks
+```
+
+When hyperlinks are enabled, file paths and function names become clickable links that open the corresponding file in your IDE. This works in terminals that support OSC 8 hyperlinks (most modern terminals and IDEs).
+
 ## Options
 
 | Option | Alias | Description | Default |
@@ -129,6 +141,7 @@ spaghetti-compass explore src/main.ts -c src/ --exclude "**/*.test.ts" --exclude
 | `--include <glob...>` | `-i` | Include patterns | `**/*.ts, **/*.js` |
 | `--exclude <glob...>` | `-e` | Exclude patterns | `**/node_modules/**` |
 | `--no-transitive` | | Direct dependencies only | `false` |
+| `--hyperlinks` | | Enable clickable hyperlinks in terminal output | `false` |
 | `--help` | `-h` | Show help | |
 | `--version` | `-v` | Show version | |
 

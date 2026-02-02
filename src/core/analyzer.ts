@@ -237,8 +237,14 @@ export class Analyzer {
     functionName: string,
     parseResult: ReturnType<TypeScriptParser['parse']>
   ): Promise<void> {
-    // Trouver la fonction
-    const func = parseResult.functions.find((f) => f.name === functionName);
+    // Trouver la fonction - chercher d'abord le nom exact, puis avec le format Class.methodName
+    let func = parseResult.functions.find((f) => f.name === functionName);
+
+    // Si pas trouvé, chercher avec le format Class.methodName (pour les méthodes de classe)
+    if (!func) {
+      func = parseResult.functions.find((f) => f.name.endsWith(`.${functionName}`));
+    }
+
     if (!func) {
       return;
     }

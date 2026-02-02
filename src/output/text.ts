@@ -4,6 +4,13 @@
 
 import type { DependencyGraph, GraphNode, GraphEdge } from '../types/index.js';
 
+/**
+ * Options de formatage
+ */
+export interface TextFormatOptions {
+  hyperlinks?: boolean;
+}
+
 // Symboles Unicode
 const SYMBOLS = {
   entryPoint: '📍',
@@ -22,9 +29,25 @@ const SYMBOLS = {
 };
 
 /**
+ * Génère un hyperlien cliquable (format OSC 8)
+ */
+function createHyperlink(text: string, url: string): string {
+  // Séquence d'échappement ANSI OSC 8: \e]8;;URL\e\\texte\e]8;;\e\\
+  return `\u001b]8;;${url}\u001b\\${text}\u001b]8;;\u001b\\`;
+}
+
+/**
+ * Crée un hyperlien vers un fichier
+ */
+function createFileLink(text: string, filePath: string, line?: number): string {
+  const url = line ? `file://${filePath}#L${line}` : `file://${filePath}`;
+  return createHyperlink(text, url);
+}
+
+/**
  * Formate le graphe en texte lisible
  */
-export function formatText(graph: DependencyGraph): string {
+export function formatText(graph: DependencyGraph, options: TextFormatOptions = {}): string {
   const lines: string[] = [];
 
   // Header
@@ -47,7 +70,13 @@ export function formatText(graph: DependencyGraph): string {
   }
 
   // Afficher le fichier d'entrée
-  lines.push(entryNode.path || entryNode.name);
+  const entryDisplay = entryNode.path || entryNode.name;
+  if (options.hyperlinks && entryNode.type === 'file') {
+    const entryFilePath = entryNode.id.startsWith('/') ? entryNode.id : graph.context.rootPath + '/' + entryNode.id;
+    lines.push(createFileLink(entryDisplay, entryFilePath));
+  } else {
+    lines.push(entryDisplay);
+  }
 
   // Grouper les edges par type et location
   const edges = graph.edges.filter((e) => e.from === graph.entryPoint);
@@ -56,19 +85,19 @@ export function formatText(graph: DependencyGraph): string {
   // Afficher les imports internes
   if (grouped.internal.length > 0) {
     lines.push(`${SYMBOLS.branch} ${SYMBOLS.importInternal} IMPORTS (internal)`);
-    formatEdgeGroup(grouped.internal, graph, lines, `${SYMBOLS.vertical}   `);
+    formatEdgeGroup(grouped.internal, graph, lines, `${SYMBOLS.vertical}   `, new Set(), options);
   }
 
   // Afficher les imports externes
   if (grouped.external.length > 0) {
     lines.push(`${SYMBOLS.branch} ${SYMBOLS.importExternal} IMPORTS (external)`);
-    formatEdgeGroup(grouped.external, graph, lines, `${SYMBOLS.vertical}   `);
+    formatEdgeGroup(grouped.external, graph, lines, `${SYMBOLS.vertical}   `, new Set(), options);
   }
 
   // Afficher les packages tiers
   if (grouped.thirdParty.length > 0) {
     lines.push(`${SYMBOLS.branch} ${SYMBOLS.thirdParty} IMPORTS (third-party)`);
-    formatEdgeGroup(grouped.thirdParty, graph, lines, `${SYMBOLS.vertical}   `);
+    formatEdgeGroup(grouped.thirdParty, graph, lines, `${SYMBOLS.vertical}   `, new Set(), options);
   }
 
   // Afficher les exports
@@ -173,7 +202,8 @@ function formatEdgeGroup(
   graph: DependencyGraph,
   lines: string[],
   prefix: string,
-  visited: Set<string> = new Set()
+  visited: Set<string> = new Set(),
+  options: TextFormatOptions = {}
 ): void {
   for (let i = 0; i < edges.length; i++) {
     const edge = edges[i];
@@ -186,7 +216,36 @@ function formatEdgeGroup(
     const displayName = node.path || node.name;
     // Afficher l'alias original si disponible
     const aliasSuffix = edge.aliasInfo ? ` (${edge.aliasInfo.original})` : '';
-    lines.push(`${prefix}${branchSymbol} ${displayName}${aliasSuffix}`);
+
+    // Créer le texte avec hyperlien si activé
+    let displayText = displayName;
+    if (options.hyperlinks && node.type === 'file') {
+      const filePath = node.id.startsWith('/') ? node.id : graph.context.rootPath + '/' + node.id;
+      displayText = createFileLink(displayName, filePath);
+    } else if (options.hyperlinks && node.type === 'function') {
+      // Pour les fonctions internes (appels dans le même fichier), lier vers la ligne dans le fichier parent
+      if (node.location === 'internal' && edge.line) {
+        const fileId = edge.from.split(':')[0];
+        const fileNode = graph.nodes.find(n => n.id === fileId);
+        if (fileNode) {
+          const filePath = fileNode.id.startsWith('/') ? fileNode.id : graph.context.rootPath + '/' + fileNode.id;
+          displayText = createFileLink(displayName, filePath, edge.line);
+        }
+      } else if (node.location === 'external' && node.id.includes(':')) {
+        // Pour les fonctions externes, essayer de lier vers le fichier si possible
+        const parts = node.id.split(':');
+        if (parts.length >= 2) {
+          const moduleName = parts[0];
+          // Essayer de résoudre le module vers un fichier
+          const modulePath = graph.context.rootPath + '/' + moduleName;
+          if (modulePath.endsWith('.ts') || modulePath.endsWith('.js')) {
+            displayText = createFileLink(displayName, modulePath);
+          }
+        }
+      }
+    }
+
+    lines.push(`${prefix}${branchSymbol} ${displayText}${aliasSuffix}`);
 
     // Afficher les dépendances transitives (seulement pour les fichiers internes)
     if (node.location === 'internal' && !visited.has(node.id)) {
@@ -201,7 +260,7 @@ function formatEdgeGroup(
 
       if (childInternal.length > 0) {
         const newPrefix = prefix + (isLast ? '    ' : `${SYMBOLS.vertical}   `);
-        formatEdgeGroup(childInternal, graph, lines, newPrefix, visited);
+        formatEdgeGroup(childInternal, graph, lines, newPrefix, visited, options);
       }
     }
   }
