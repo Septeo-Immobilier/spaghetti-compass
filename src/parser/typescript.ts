@@ -5,8 +5,8 @@
 import ts from 'typescript';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import type { ParseResult, FunctionInfo, FunctionCallInfo } from '../types/index.js';
-import { extractImports, extractExports, extractFunctionCalls } from './imports.js';
+import type { ParseResult, FunctionInfo, FunctionCallInfo } from '../types/index';
+import { extractImports, extractExports, extractFunctionCalls } from './imports';
 
 /**
  * Options du parser

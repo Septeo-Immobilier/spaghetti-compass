@@ -8,7 +8,7 @@ import type {
   DependencyGraph,
   ContextInfo,
   GraphStats,
-} from '../types/index.js';
+} from '../types/index';
 
 const VERSION = '1.0.0';
 

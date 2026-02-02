@@ -3,7 +3,7 @@
  */
 
 import ts from 'typescript';
-import type { ImportInfo, ExportInfo, EdgeType, FunctionCallInfo } from '../types/index.js';
+import type { ImportInfo, ExportInfo, EdgeType, FunctionCallInfo } from '../types/index';
 
 /**
  * Vérifie si un noeud est un import dynamique

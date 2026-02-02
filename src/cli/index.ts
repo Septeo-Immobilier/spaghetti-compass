@@ -6,10 +6,10 @@ import { Command } from 'commander';
 import * as path from 'node:path';
 import * as fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import type { ContextInfo, AnalyzeOptions } from '../types/index.js';
-import { Analyzer } from '../core/analyzer.js';
-import { formatText } from '../output/text.js';
-import { formatJson } from '../output/json.js';
+import type { ContextInfo, AnalyzeOptions } from '../types/index';
+import { Analyzer } from '../core/analyzer';
+import { formatText } from '../output/text';
+import { formatJson } from '../output/json';
 
 // Exit codes
 const EXIT_SUCCESS = 0;

@@ -2,7 +2,7 @@
  * Formatter de sortie JSON
  */
 
-import type { DependencyGraph } from '../types/index.js';
+import type { DependencyGraph } from '../types/index';
 
 /**
  * Formate le graphe en JSON
