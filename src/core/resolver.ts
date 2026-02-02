@@ -4,7 +4,7 @@
 
 import * as path from 'node:path';
 import * as fs from 'node:fs';
-import type { NodeLocation, ContextInfo } from '../types/index';
+import type { NodeLocation, ContextInfo } from '../types/index.js';
 
 /**
  * Résout les chemins de modules et classifie leur localisation

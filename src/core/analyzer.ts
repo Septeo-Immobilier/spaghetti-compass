@@ -10,10 +10,10 @@ import type {
   GraphEdge,
   ImportInfo,
   ExportInfo,
-} from '../types/index';
-import { DependencyGraphBuilder } from './graph';
-import { PathResolver } from './resolver';
-import { TypeScriptParser } from '../parser/typescript';
+} from '../types/index.js';
+import { DependencyGraphBuilder } from './graph.js';
+import { PathResolver } from './resolver.js';
+import { TypeScriptParser } from '../parser/typescript.js';
 
 /**
  * Options d'analyse

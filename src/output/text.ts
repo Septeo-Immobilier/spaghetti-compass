@@ -2,7 +2,7 @@
  * Formatter de sortie texte arborescent
  */
 
-import type { DependencyGraph, GraphNode, GraphEdge } from '../types/index';
+import type { DependencyGraph, GraphNode, GraphEdge } from '../types/index.js';
 
 // Symboles Unicode
 const SYMBOLS = {
