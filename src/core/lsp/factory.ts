@@ -5,6 +5,8 @@
 import * as path from 'node:path';
 import type { LspProvider, LspConfig } from './types.js';
 import { TypeScriptLspProvider } from './typescript.js';
+import { PhpLspProvider } from './php.js';
+import { PythonLspProvider } from './python.js';
 import { NullLspProvider } from './null.js';
 
 /**
@@ -88,17 +90,9 @@ export class LspProviderFactory {
       case 'typescript':
         return new TypeScriptLspProvider();
       case 'php':
-        // TODO: Implémenter PhpLspProvider dans Phase 3
-        if (this.config.debug) {
-          console.warn('[LSP] PHP support not yet implemented, using fallback');
-        }
-        return new NullLspProvider();
+        return new PhpLspProvider(this.config.debug);
       case 'python':
-        // TODO: Implémenter PythonLspProvider dans Phase 4
-        if (this.config.debug) {
-          console.warn('[LSP] Python support not yet implemented, using fallback');
-        }
-        return new NullLspProvider();
+        return new PythonLspProvider(this.config.debug);
       default:
         return new NullLspProvider();
     }

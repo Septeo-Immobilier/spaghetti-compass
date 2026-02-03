@@ -54,12 +54,12 @@
 
 **Independent Test**: Analyser `fixtures/app/main.py` et vérifier les liens de définition
 
-- [ ] T016 [P] Créer `src/core/lsp/php.ts` avec `PhpLspProvider`
-- [ ] T017 Implémenter détection de `intelephense` (`which intelephense` ou `npx`)
-- [ ] T018 Implémenter démarrage du processus `intelephense --stdio`
-- [ ] T019 Implémenter `getDefinition()` via LSP protocol
-- [ ] T020 Implémenter `getDefinitionByName()` avec recherche de position
-- [ ] T021 Ajouter fallback gracieux si Intelephense non installé
+- [x] T016 [P] Créer `src/core/lsp/php.ts` avec `PhpLspProvider`
+- [x] T017 Implémenter détection de `intelephense` (`which intelephense` ou `npx`)
+- [x] T018 Implémenter démarrage du processus `intelephense --stdio`
+- [x] T019 Implémenter `getDefinition()` via LSP protocol
+- [x] T020 Implémenter `getDefinitionByName()` avec recherche de position
+- [x] T021 Ajouter fallback gracieux si Intelephense non installé
 - [ ] T022 Tester avec fixtures PHP (`fixtures/app/`)
 
 ---
@@ -70,12 +70,12 @@
 
 **Independent Test**: Analyser fixtures Python et vérifier les liens de définition
 
-- [ ] T023 [P] Créer `src/core/lsp/python.ts` avec `PythonLspProvider`
-- [ ] T024 Implémenter détection de `pyright-langserver`
-- [ ] T025 Implémenter démarrage du processus `pyright-langserver --stdio`
-- [ ] T026 Implémenter `getDefinition()` via LSP protocol
-- [ ] T027 Implémenter `getDefinitionByName()` avec recherche de position
-- [ ] T028 Ajouter fallback gracieux si Pyright non installé
+- [x] T023 [P] Créer `src/core/lsp/python.ts` avec `PythonLspProvider`
+- [x] T024 Implémenter détection de `pyright-langserver`
+- [x] T025 Implémenter démarrage du processus `pyright-langserver --stdio`
+- [x] T026 Implémenter `getDefinition()` via LSP protocol
+- [x] T027 Implémenter `getDefinitionByName()` avec recherche de position
+- [x] T028 Ajouter fallback gracieux si Pyright non installé
 - [ ] T029 Créer fixtures Python de test si nécessaire
 
 ---
