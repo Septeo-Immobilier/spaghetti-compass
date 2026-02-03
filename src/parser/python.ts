@@ -5,22 +5,26 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import type { ParseResult, ImportInfo, ExportInfo, FunctionInfo, FunctionCallInfo } from '../types/index.js';
-
-/**
- * Options du parser
- */
-export interface PythonParserOptions {
-  extractFunctions?: boolean;
-}
+import type { Parser, ParserOptions } from './types.js';
 
 /**
  * Parser pour fichiers Python
  */
-export class PythonParser {
+export class PythonParser implements Parser {
+  readonly name = 'python';
+  readonly supportedExtensions = ['.py', '.pyi'];
+  /**
+   * Vérifie si un fichier est supporté par ce parser
+   */
+  isSupported(filePath: string): boolean {
+    const ext = path.extname(filePath).toLowerCase();
+    return this.supportedExtensions.includes(ext);
+  }
+
   /**
    * Parse un fichier Python et extrait ses imports et fonctions
    */
-  parse(filePath: string, options: PythonParserOptions = {}): ParseResult {
+  parse(filePath: string, options: ParserOptions = {}): ParseResult {
     const absolutePath = path.resolve(filePath);
     const result: ParseResult = {
       filePath: absolutePath,
@@ -317,7 +321,8 @@ export class PythonParser {
   }
 
   /**
-   * Vérifie si un fichier est un fichier Python
+   * Vérifie si un fichier est un fichier Python (statique)
+   * @deprecated Utiliser l'instance method isSupported() ou ParserFactory
    */
   static isSupported(filePath: string): boolean {
     const ext = path.extname(filePath).toLowerCase();

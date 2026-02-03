@@ -6,20 +6,16 @@ import ts from 'typescript';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import type { ParseResult, FunctionInfo, FunctionCallInfo } from '../types/index.js';
+import type { Parser, ParserOptions } from './types.js';
 import { extractImports, extractExports, extractFunctionCalls } from './imports.js';
-
-/**
- * Options du parser
- */
-export interface ParserOptions {
-  /** Extraire les informations de fonctions */
-  extractFunctions?: boolean;
-}
 
 /**
  * Parser pour fichiers TypeScript et JavaScript
  */
-export class TypeScriptParser {
+export class TypeScriptParser implements Parser {
+  readonly name = 'typescript';
+  readonly supportedExtensions = ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs'];
+
   private compilerOptions: ts.CompilerOptions;
 
   constructor() {
@@ -302,7 +298,16 @@ export class TypeScriptParser {
   }
 
   /**
-   * Vérifie si un fichier est un fichier TypeScript/JavaScript supporté
+   * Vérifie si un fichier est supporté par ce parser
+   */
+  isSupported(filePath: string): boolean {
+    const ext = path.extname(filePath).toLowerCase();
+    return this.supportedExtensions.includes(ext);
+  }
+
+  /**
+   * Vérifie si un fichier est un fichier TypeScript/JavaScript supporté (statique)
+   * @deprecated Utiliser l'instance method isSupported() ou ParserFactory
    */
   static isSupported(filePath: string): boolean {
     const ext = path.extname(filePath).toLowerCase();

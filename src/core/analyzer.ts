@@ -13,9 +13,7 @@ import type {
 } from '../types/index.js';
 import { DependencyGraphBuilder } from './graph.js';
 import { PathResolver } from './resolver.js';
-import { TypeScriptParser } from '../parser/typescript.js';
-import { PhpParser } from '../parser/php.js';
-import { PythonParser } from '../parser/python.js';
+import { ParserFactory } from '../parser/index.js';
 import { TsConfigResolver } from './tsconfig.js';
 import { LspProviderFactory, type LspProvider } from './lsp/index.js';
 import type { ParseResult } from '../types/index.js';
@@ -35,9 +33,7 @@ export interface AnalyzerOptions {
  */
 export class Analyzer {
   private resolver: PathResolver;
-  private tsParser: TypeScriptParser;
-  private phpParser: PhpParser;
-  private pythonParser: PythonParser;
+  private parserFactory: ParserFactory;
   private graphBuilder: DependencyGraphBuilder;
   private visited: Set<string> = new Set();
   /** Cache des exports par fichier pour éviter de re-parser */
@@ -72,9 +68,7 @@ export class Analyzer {
 
     this.enhancedContext = enhancedContext;
     this.resolver = new PathResolver(enhancedContext);
-    this.tsParser = new TypeScriptParser();
-    this.phpParser = new PhpParser();
-    this.pythonParser = new PythonParser();
+    this.parserFactory = new ParserFactory();
     this.graphBuilder = new DependencyGraphBuilder(enhancedContext);
     this.lspFactory = new LspProviderFactory();
   }
@@ -103,27 +97,18 @@ export class Analyzer {
    * Parse un fichier avec le parser approprié selon son extension
    */
   private parseFile(filePath: string, options: { extractFunctions?: boolean } = {}): ParseResult | null {
-    if (TypeScriptParser.isSupported(filePath)) {
-      return this.tsParser.parse(filePath, options);
+    const parser = this.parserFactory.getParser(filePath);
+    if (!parser.isSupported(filePath)) {
+      return null;
     }
-    if (PhpParser.isSupported(filePath)) {
-      return this.phpParser.parse(filePath, options);
-    }
-    if (PythonParser.isSupported(filePath)) {
-      return this.pythonParser.parse(filePath, options);
-    }
-    return null;
+    return parser.parse(filePath, options);
   }
 
   /**
    * Vérifie si un fichier est supporté par un des parsers
    */
-  static isSupported(filePath: string): boolean {
-    return (
-      TypeScriptParser.isSupported(filePath) ||
-      PhpParser.isSupported(filePath) ||
-      PythonParser.isSupported(filePath)
-    );
+  isSupported(filePath: string): boolean {
+    return this.parserFactory.isSupported(filePath);
   }
 
   /**
@@ -187,7 +172,7 @@ export class Analyzer {
 
     if (!exports) {
       // Parser le fichier pour obtenir les exports
-      if (!Analyzer.isSupported(filePath)) {
+      if (!this.isSupported(filePath)) {
         return undefined;
       }
 
@@ -275,7 +260,7 @@ export class Analyzer {
       options.transitive !== false &&
       resolvedPath &&
       location === 'internal' &&
-      Analyzer.isSupported(resolvedPath)
+      this.isSupported(resolvedPath)
     ) {
       await this.analyzeFile(resolvedPath, options);
     }
@@ -321,7 +306,7 @@ export class Analyzer {
       options.transitive !== false &&
       resolvedPath &&
       location === 'internal' &&
-      Analyzer.isSupported(resolvedPath)
+      this.isSupported(resolvedPath)
     ) {
       await this.analyzeFile(resolvedPath, options);
     }

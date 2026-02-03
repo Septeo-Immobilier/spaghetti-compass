@@ -5,22 +5,26 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import type { ParseResult, ImportInfo, ExportInfo, FunctionInfo, FunctionCallInfo } from '../types/index.js';
-
-/**
- * Options du parser
- */
-export interface PhpParserOptions {
-  extractFunctions?: boolean;
-}
+import type { Parser, ParserOptions } from './types.js';
 
 /**
  * Parser pour fichiers PHP
  */
-export class PhpParser {
+export class PhpParser implements Parser {
+  readonly name = 'php';
+  readonly supportedExtensions = ['.php'];
+  /**
+   * Vérifie si un fichier est supporté par ce parser
+   */
+  isSupported(filePath: string): boolean {
+    const ext = path.extname(filePath).toLowerCase();
+    return this.supportedExtensions.includes(ext);
+  }
+
   /**
    * Parse un fichier PHP et extrait ses imports et fonctions
    */
-  parse(filePath: string, options: PhpParserOptions = {}): ParseResult {
+  parse(filePath: string, options: ParserOptions = {}): ParseResult {
     const absolutePath = path.resolve(filePath);
     const result: ParseResult = {
       filePath: absolutePath,
@@ -316,7 +320,8 @@ export class PhpParser {
   }
 
   /**
-   * Vérifie si un fichier est un fichier PHP
+   * Vérifie si un fichier est un fichier PHP (statique)
+   * @deprecated Utiliser l'instance method isSupported() ou ParserFactory
    */
   static isSupported(filePath: string): boolean {
     return path.extname(filePath).toLowerCase() === '.php';
