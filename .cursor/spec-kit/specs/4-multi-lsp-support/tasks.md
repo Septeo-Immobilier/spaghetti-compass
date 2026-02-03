@@ -60,7 +60,7 @@
 - [x] T019 Implémenter `getDefinition()` via LSP protocol
 - [x] T020 Implémenter `getDefinitionByName()` avec recherche de position
 - [x] T021 Ajouter fallback gracieux si Intelephense non installé
-- [ ] T022 Tester avec fixtures PHP (`fixtures/app/`)
+- [x] T022 Créer fixtures PHP (`fixtures/php/`)
 
 ---
 
@@ -76,7 +76,7 @@
 - [x] T026 Implémenter `getDefinition()` via LSP protocol
 - [x] T027 Implémenter `getDefinitionByName()` avec recherche de position
 - [x] T028 Ajouter fallback gracieux si Pyright non installé
-- [ ] T029 Créer fixtures Python de test si nécessaire
+- [x] T029 Réorganiser fixtures (`fixtures/python/`, `fixtures/typescript/`)
 
 ---
 

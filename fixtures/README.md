@@ -1,52 +1,56 @@
-# Fixtures pour Code Relations Explorer
+# Test Fixtures
 
-Ce dossier contient du code de test pour valider la fonctionnalité d'exploration des relations de code.
+This directory contains sample projects for testing spaghetti-compass across different languages.
 
 ## Structure
 
 ```
 fixtures/
-├── app/                    # Module principal (contexte suggéré)
-│   ├── __init__.py
-│   ├── main.py            # Point d'entrée, importe services et utils
-│   ├── services/
-│   │   ├── __init__.py
-│   │   ├── user_service.py    # Utilise models et external libs
-│   │   └── auth_service.py    # Relation circulaire avec user_service
-│   ├── models/
-│   │   ├── __init__.py
-│   │   └── user.py            # Modèle de données
-│   └── utils/
-│       ├── __init__.py
-│       └── helpers.py         # Fonctions utilitaires
-├── external_module/        # Module externe (hors du contexte app/)
-│   ├── __init__.py
-│   └── api_client.py      # Référencé depuis app/
-└── README.md
+├── typescript/    # TypeScript/JavaScript project
+├── python/        # Python project
+└── php/           # PHP project
 ```
 
-## Relations à détecter
+## TypeScript Fixture
 
-### Relations Internes (dans app/)
-- `main.py` → `services/user_service.py`
-- `main.py` → `utils/helpers.py`
-- `services/user_service.py` → `models/user.py`
-- `services/user_service.py` ↔ `services/auth_service.py` (circulaire)
-- `services/auth_service.py` → `utils/helpers.py`
+```bash
+# Analyze the main entry point
+spaghetti-compass explore fixtures/typescript/main.ts
 
-### Relations Externes (hors app/)
-- `services/user_service.py` → `external_module/api_client.py`
-- `services/user_service.py` → `json` (stdlib)
-- `services/auth_service.py` → `hashlib` (stdlib)
-- `models/user.py` → `dataclasses` (stdlib)
+# Analyze a specific function
+spaghetti-compass explore fixtures/typescript/services/auth-service.ts:authenticate
+```
 
-### Dépendances Tierces (simulées)
-- `requests` (dans user_service.py)
-- `pydantic` (dans models/user.py)
+## Python Fixture
 
-## Cas de test
+Requires: **Pyright** (`npm install -g pyright`)
 
-1. **Fichier `app/main.py` avec contexte `app/`** → devrait montrer relations internes vers services et utils
-2. **Fichier `app/services/user_service.py` avec contexte `app/`** → devrait montrer external_module comme externe
-3. **Fonction `get_user()` dans user_service.py** → devrait montrer appels vers auth_service et models
-4. **Contexte changé de `app/` à `app/services/`** → models/ devient externe
+```bash
+# Analyze the main entry point
+spaghetti-compass explore fixtures/python/app/main.py
+
+# Analyze a specific function
+spaghetti-compass explore fixtures/python/app/services/auth_service.py:authenticate
+```
+
+## PHP Fixture
+
+Requires: **Intelephense** (`npm install -g intelephense`)
+
+```bash
+# Analyze the main entry point
+spaghetti-compass explore fixtures/php/src/main.php
+
+# Analyze a specific function
+spaghetti-compass explore fixtures/php/src/Services/AuthService.php:login
+```
+
+## Testing LSP Navigation
+
+Each fixture is designed to test:
+1. **Internal dependencies** - imports within the project
+2. **Function calls** - method/function invocations
+3. **Class instantiation** - object creation
+4. **Utility functions** - helper functions imports
+
+The output should include clickable links in the format `path:line:column (symbol)` that navigate to the definition, not the import.
