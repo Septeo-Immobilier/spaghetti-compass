@@ -327,4 +327,15 @@ export class LspProcessManager {
     const keys = Array.from(this.processes.keys());
     await Promise.all(keys.map((key) => this.shutdown(key)));
   }
+
+  /**
+   * Récupère un processus existant (sans le créer)
+   */
+  getExistingProcess(key: string): LspProcess | null {
+    const existing = this.processes.get(key);
+    if (existing && !existing.process.killed) {
+      return existing;
+    }
+    return null;
+  }
 }

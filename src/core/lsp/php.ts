@@ -29,22 +29,22 @@ export class PhpLspProvider implements LspProvider {
 
   async isAvailable(): Promise<boolean> {
     try {
-      // Essayer de trouver intelephense
-      execSync('npx intelephense --version', { stdio: 'pipe' });
+      // Vérifier si intelephense est installé localement dans node_modules
+      const localPath = path.join(process.cwd(), 'node_modules', '.bin', 'intelephense');
+      if (fs.existsSync(localPath)) {
+        return true;
+      }
+
+      // Essayer avec which/where pour une installation globale
+      execSync(process.platform === 'win32' ? 'where intelephense' : 'which intelephense', {
+        stdio: 'pipe',
+      });
       return true;
     } catch {
-      try {
-        // Essayer avec which/where
-        execSync(process.platform === 'win32' ? 'where intelephense' : 'which intelephense', {
-          stdio: 'pipe',
-        });
-        return true;
-      } catch {
-        if (this.debug) {
-          console.warn('[LSP] Intelephense not found. Install with: npm install -g intelephense');
-        }
-        return false;
+      if (this.debug) {
+        console.warn('[LSP] Intelephense not found. Install with: npm install -g intelephense');
       }
+      return false;
     }
   }
 
@@ -56,10 +56,14 @@ export class PhpLspProvider implements LspProvider {
   }
 
   private async ensureProcess(): Promise<boolean> {
+    // Utiliser le chemin local si disponible, sinon npx
+    const localPath = path.join(this.projectRoot, 'node_modules', '.bin', 'intelephense');
+    const useLocal = fs.existsSync(localPath);
+    
     const process = await this.processManager.getOrCreateProcess(
       this.processKey,
-      'npx',
-      ['intelephense', '--stdio'],
+      useLocal ? localPath : 'npx',
+      useLocal ? ['--stdio'] : ['intelephense', '--stdio'],
       this.projectRoot
     );
     return process !== null;
@@ -97,12 +101,7 @@ export class PhpLspProvider implements LspProvider {
       return null;
     }
 
-    const process = await this.processManager.getOrCreateProcess(
-      this.processKey,
-      'npx',
-      ['intelephense', '--stdio'],
-      this.projectRoot
-    );
+    const process = this.processManager.getExistingProcess(this.processKey);
     if (!process) {
       return null;
     }
