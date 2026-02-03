@@ -78,6 +78,20 @@ export class PathResolver {
       }
     }
 
+    // Gérer les imports relatifs Python (.module, ..module, etc.)
+    if (this.isPythonRelativeImport(moduleSpecifier)) {
+      resolved = this.resolvePythonRelativeImport(moduleSpecifier, fromFile);
+      this.resolvedCache.set(cacheKey, resolved);
+      return resolved;
+    }
+
+    // Gérer les chemins relatifs PHP avec __DIR__ (/../path/to/file.php)
+    if (this.isPhpRelativePath(moduleSpecifier)) {
+      resolved = this.resolvePhpRelativePath(moduleSpecifier, fromFile);
+      this.resolvedCache.set(cacheKey, resolved);
+      return resolved;
+    }
+
     if (this.isNpmPackage(moduleSpecifier)) {
       // Pour les packages npm, on retourne le nom du package
       resolved = this.getPackageName(moduleSpecifier);
@@ -96,6 +110,109 @@ export class PathResolver {
 
     this.resolvedCache.set(cacheKey, resolved);
     return resolved;
+  }
+
+  /**
+   * Vérifie si un specifier est un import relatif Python
+   * (.module, ..module, .subpkg.module, etc.)
+   */
+  private isPythonRelativeImport(moduleSpecifier: string): boolean {
+    // Les imports relatifs Python commencent par un ou plusieurs points
+    return /^\.+[a-zA-Z_]/.test(moduleSpecifier) || moduleSpecifier === '.';
+  }
+
+  /**
+   * Résout un import relatif Python vers un chemin de fichier
+   * .module -> ./module.py
+   * ..module -> ../module.py
+   * .subpkg.module -> ./subpkg/module.py
+   */
+  private resolvePythonRelativeImport(moduleSpecifier: string, fromFile: string): string | null {
+    // Compter les points au début pour déterminer le niveau de remontée
+    const dotMatch = moduleSpecifier.match(/^(\.+)/);
+    if (!dotMatch) {
+      return null;
+    }
+
+    const dots = dotMatch[1];
+    const dotCount = dots.length;
+    const modulePath = moduleSpecifier.slice(dotCount);
+
+    // Partir du répertoire du fichier source
+    let fromDir = path.dirname(fromFile);
+
+    // Remonter d'un niveau pour chaque point supplémentaire au-delà du premier
+    // . = même répertoire (package courant)
+    // .. = répertoire parent
+    // ... = grand-parent, etc.
+    for (let i = 1; i < dotCount; i++) {
+      fromDir = path.dirname(fromDir);
+    }
+
+    // Convertir le chemin de module Python en chemin de fichier
+    // .services.user_service -> ./services/user_service.py
+    const pathParts = modulePath.split('.');
+    const relativePath = pathParts.join(path.sep);
+
+    // Candidats de résolution pour Python
+    const candidates = [
+      path.join(fromDir, relativePath + '.py'),
+      path.join(fromDir, relativePath + '.pyi'),
+      path.join(fromDir, relativePath, '__init__.py'),
+      path.join(fromDir, relativePath, '__init__.pyi'),
+    ];
+
+    for (const candidate of candidates) {
+      if (fs.existsSync(candidate)) {
+        return path.resolve(candidate);
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * Vérifie si un specifier est un chemin relatif PHP
+   * Inclut les chemins comme /../path (utilisés avec __DIR__)
+   */
+  private isPhpRelativePath(moduleSpecifier: string): boolean {
+    // Chemins commençant par ./ ou ../
+    if (moduleSpecifier.startsWith('./') || moduleSpecifier.startsWith('../')) {
+      return true;
+    }
+    // Chemins commençant par / suivi de .. (comme /../Models/User.php utilisé avec __DIR__)
+    if (moduleSpecifier.startsWith('/..')) {
+      return true;
+    }
+    // Chemins absolus commençant par / et se terminant par .php
+    if (moduleSpecifier.startsWith('/') && moduleSpecifier.endsWith('.php')) {
+      return true;
+    }
+    return false;
+  }
+
+  /**
+   * Résout un chemin relatif PHP vers un chemin de fichier absolu
+   * /../Models/User.php -> /absolute/path/to/Models/User.php
+   */
+  private resolvePhpRelativePath(moduleSpecifier: string, fromFile: string): string | null {
+    const fromDir = path.dirname(fromFile);
+    
+    // Les chemins PHP avec __DIR__ comme /../path doivent être traités comme relatifs
+    // path.resolve traite /.. comme un chemin absolu, donc on préfixe avec .
+    let normalizedSpec = moduleSpecifier;
+    if (moduleSpecifier.startsWith('/')) {
+      normalizedSpec = '.' + moduleSpecifier;
+    }
+    
+    // Normaliser le chemin (gérer les /../ et /./)
+    const resolvedPath = path.resolve(fromDir, normalizedSpec);
+    
+    if (fs.existsSync(resolvedPath)) {
+      return resolvedPath;
+    }
+    
+    return null;
   }
 
   /**
