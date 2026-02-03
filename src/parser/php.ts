@@ -190,38 +190,73 @@ export class PhpParser implements Parser {
     }
 
     let currentClass: string | null = null;
+    let pendingClass: string | null = null; // Classe détectée mais pas encore d'accolade
+    let classBraceDepth = 0;
     let braceDepth = 0;
     let functionStart = -1;
     let functionName = '';
+    let pendingFunction: { name: string; line: number } | null = null; // Fonction détectée mais pas encore d'accolade
     let functionBraceStart = 0;
 
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
 
-      // Tracker les classes
-      const classMatch = line.match(/^\s*(?:abstract\s+)?(?:final\s+)?class\s+(\w+)/);
-      if (classMatch) {
-        currentClass = classMatch[1];
-      }
-
-      // Fonctions/méthodes
-      const funcMatch = line.match(/^\s*(?:public\s+|private\s+|protected\s+|static\s+)*function\s+(\w+)\s*\(/);
-      if (funcMatch) {
-        functionStart = i;
-        functionName = currentClass ? `${currentClass}.${funcMatch[1]}` : funcMatch[1];
-        functionBraceStart = braceDepth;
-      }
-
       // Compter les accolades
-      for (const char of line) {
-        if (char === '{') braceDepth++;
-        if (char === '}') braceDepth--;
+      const openBraces = (line.match(/\{/g) || []).length;
+      const closeBraces = (line.match(/\}/g) || []).length;
+
+      // Tracker les classes - détecter la déclaration
+      const classMatch = line.match(/^\s*(?:abstract\s+)?(?:final\s+)?class\s+(\w+)/);
+      if (classMatch && currentClass === null && pendingClass === null) {
+        if (openBraces > 0) {
+          // L'accolade est sur la même ligne
+          currentClass = classMatch[1];
+          classBraceDepth = braceDepth + 1; // Après l'accolade ouvrante
+        } else {
+          // L'accolade sera sur une ligne suivante
+          pendingClass = classMatch[1];
+        }
       }
 
-      // Fin de fonction
-      if (functionStart !== -1 && braceDepth <= functionBraceStart) {
+      // Si on a une classe en attente et qu'on trouve une accolade
+      if (pendingClass && openBraces > 0) {
+        currentClass = pendingClass;
+        classBraceDepth = braceDepth + 1;
+        pendingClass = null;
+      }
+
+      // Fonctions/méthodes - détecter la déclaration
+      const funcMatch = line.match(/^\s*(?:public\s+|private\s+|protected\s+|static\s+)*function\s+(\w+)\s*\(/);
+      if (funcMatch && functionStart === -1 && pendingFunction === null) {
+        const rawFuncName = funcMatch[1];
+        const fullFuncName = currentClass ? `${currentClass}.${rawFuncName}` : rawFuncName;
+
+        if (openBraces > 0) {
+          // L'accolade est sur la même ligne
+          functionStart = i;
+          functionName = fullFuncName;
+          functionBraceStart = braceDepth + 1;
+        } else {
+          // L'accolade sera sur une ligne suivante
+          pendingFunction = { name: fullFuncName, line: i };
+        }
+      }
+
+      // Si on a une fonction en attente et qu'on trouve une accolade
+      if (pendingFunction && openBraces > 0) {
+        functionStart = pendingFunction.line;
+        functionName = pendingFunction.name;
+        functionBraceStart = braceDepth + 1;
+        pendingFunction = null;
+      }
+
+      // Mettre à jour la profondeur des accolades
+      braceDepth += openBraces - closeBraces;
+
+      // Fin de fonction - quand on revient au niveau avant l'accolade ouvrante
+      if (functionStart !== -1 && braceDepth < functionBraceStart) {
         const functionContent = lines.slice(functionStart, i + 1).join('\n');
-        const calls = this.extractFunctionCalls(functionContent, importMap);
+        const calls = this.extractFunctionCalls(functionContent, importMap, functionName);
 
         functions.push({
           name: functionName,
@@ -232,11 +267,13 @@ export class PhpParser implements Parser {
 
         functionStart = -1;
         functionName = '';
+        functionBraceStart = 0;
       }
 
-      // Reset class à la fin
-      if (currentClass && braceDepth === 0) {
+      // Reset class quand on sort de la classe
+      if (currentClass && braceDepth < classBraceDepth) {
         currentClass = null;
+        classBraceDepth = 0;
       }
     }
 
@@ -246,20 +283,80 @@ export class PhpParser implements Parser {
   /**
    * Extrait les appels de fonction dans un bloc de code
    */
-  private extractFunctionCalls(content: string, importMap: Map<string, string>): FunctionCallInfo[] {
+  private extractFunctionCalls(content: string, importMap: Map<string, string>, currentFunctionName?: string): FunctionCallInfo[] {
     const calls: FunctionCallInfo[] = [];
     const seen = new Set<string>();
     const lines = content.split('\n');
 
+    // Mots-clés et fonctions natives PHP à ignorer
+    const phpKeywords = new Set([
+      'if', 'else', 'elseif', 'while', 'for', 'foreach', 'switch', 'case',
+      'function', 'class', 'interface', 'trait', 'abstract', 'final',
+      'public', 'private', 'protected', 'static', 'const', 'new', 'return',
+      'try', 'catch', 'finally', 'throw', 'use', 'namespace', 'extends', 'implements',
+    ]);
+
+    const phpNativeFunctions = new Set([
+      // Array functions
+      'array', 'array_merge', 'array_map', 'array_filter', 'array_reduce',
+      'array_keys', 'array_values', 'array_push', 'array_pop', 'array_shift',
+      'array_unshift', 'array_slice', 'array_splice', 'in_array', 'count',
+      'sizeof', 'sort', 'usort', 'ksort', 'asort', 'array_search', 'array_key_exists',
+      // String functions
+      'strlen', 'strpos', 'substr', 'str_replace', 'strtolower', 'strtoupper',
+      'trim', 'ltrim', 'rtrim', 'explode', 'implode', 'sprintf', 'printf',
+      'preg_match', 'preg_replace', 'preg_split',
+      // Type functions
+      'isset', 'empty', 'unset', 'is_array', 'is_string', 'is_int', 'is_null',
+      'is_bool', 'is_object', 'is_numeric', 'gettype', 'settype', 'intval',
+      'floatval', 'strval', 'boolval',
+      // Output functions
+      'echo', 'print', 'print_r', 'var_dump', 'var_export',
+      // File functions
+      'file_get_contents', 'file_put_contents', 'fopen', 'fclose', 'fread', 'fwrite',
+      'file_exists', 'is_file', 'is_dir', 'mkdir', 'rmdir', 'unlink',
+      // JSON functions
+      'json_encode', 'json_decode',
+      // Date functions
+      'date', 'time', 'strtotime', 'mktime',
+      // Math functions
+      'abs', 'ceil', 'floor', 'round', 'max', 'min', 'rand', 'mt_rand',
+      // Other common functions
+      'defined', 'define', 'constant', 'class_exists', 'method_exists',
+      'property_exists', 'get_class', 'get_parent_class', 'call_user_func',
+      'call_user_func_array', 'func_get_args', 'func_num_args',
+      'header', 'exit', 'die', 'sleep', 'usleep',
+      'bin2hex', 'hex2bin', 'base64_encode', 'base64_decode',
+      'random_bytes', 'random_int', 'password_hash', 'password_verify',
+    ]);
+
+    // Extraire le nom simple de la fonction courante (sans préfixe de classe)
+    const currentSimpleName = currentFunctionName?.includes('.')
+      ? currentFunctionName.split('.').pop()
+      : currentFunctionName;
+
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
 
-      // Appels de fonction: functionName(
-      const funcCallMatches = line.matchAll(/\b(\w+)\s*\(/g);
+      // Ignorer la première ligne (déclaration de la fonction)
+      if (i === 0) continue;
+
+      // Appels de fonction: functionName( mais PAS $obj->functionName( ni ClassName::functionName(
+      // On utilise un lookbehind négatif pour exclure les appels de méthode
+      const funcCallMatches = line.matchAll(/(?<![>\w:])(\b\w+)\s*\(/g);
       for (const match of funcCallMatches) {
         const name = match[1];
-        // Ignorer les mots-clés PHP
-        if (['if', 'else', 'while', 'for', 'foreach', 'switch', 'function', 'class', 'array', 'isset', 'empty', 'unset'].includes(name)) {
+        // Ignorer les mots-clés PHP, fonctions natives, et la fonction courante
+        if (phpKeywords.has(name) || phpNativeFunctions.has(name)) {
+          continue;
+        }
+        if (name === currentSimpleName) {
+          continue; // Ignorer les appels récursifs
+        }
+        // Vérifier que ce n'est pas précédé par -> ou :: (appel de méthode)
+        const matchIndex = match.index || 0;
+        const prefix = line.substring(Math.max(0, matchIndex - 2), matchIndex);
+        if (prefix.includes('->') || prefix.includes('::')) {
           continue;
         }
         if (!seen.has(name)) {
@@ -272,15 +369,29 @@ export class PhpParser implements Parser {
         }
       }
 
-      // Appels de méthode: $obj->method(
+      // Appels de méthode: $obj->method( ou $this->method(
       const methodMatches = line.matchAll(/\$(\w+)->(\w+)\s*\(/g);
       for (const match of methodMatches) {
+        const objName = match[1];
         const methodName = match[2];
-        if (!seen.has(methodName)) {
-          seen.add(methodName);
+
+        // Ignorer $this->currentMethod (appel récursif)
+        if (objName === 'this' && methodName === currentSimpleName) {
+          continue;
+        }
+
+        // Pour $this->method, on veut tracker les appels internes à la classe
+        const isThisCall = objName === 'this';
+        const callKey = isThisCall ? `this.${methodName}` : `${objName}.${methodName}`;
+        if (!seen.has(callKey)) {
+          seen.add(callKey);
           calls.push({
             name: methodName,
             line: i + 1,
+            // Si c'est $this->, c'est un appel interne, sinon on cherche dans les imports
+            fromModule: isThisCall ? undefined : importMap.get(objName),
+            isThisCall,
+            objectName: isThisCall ? undefined : objName,
           });
         }
       }
@@ -290,6 +401,10 @@ export class PhpParser implements Parser {
       for (const match of staticMatches) {
         const className = match[1];
         const methodName = match[2];
+        // Ignorer self:: et static:: pour les appels récursifs
+        if ((className === 'self' || className === 'static') && methodName === currentSimpleName) {
+          continue;
+        }
         const fullName = `${className}.${methodName}`;
         if (!seen.has(fullName)) {
           seen.add(fullName);

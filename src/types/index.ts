@@ -271,4 +271,8 @@ export interface FunctionCallInfo {
   definitionLine?: number;
   /** Colonne de définition de la fonction */
   definitionColumn?: number;
+  /** true si c'est un appel sur $this (PHP) ou this (JS/TS) - méthode interne à la classe */
+  isThisCall?: boolean;
+  /** Nom de l'objet sur lequel la méthode est appelée (ex: "user" pour $user->method) */
+  objectName?: string;
 }
