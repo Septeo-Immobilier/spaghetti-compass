@@ -21,14 +21,14 @@
 
 **Checkpoint**: Le code TypeScript fonctionne identiquement après refactoring
 
-- [ ] T001 Créer `src/core/lsp/types.ts` avec interface `LspProvider` et `DefinitionResult`
-- [ ] T002 Créer `src/core/lsp/null.ts` avec `NullLspProvider` (no-op fallback)
-- [ ] T003 Créer `src/core/lsp/typescript.ts` en migrant le code de `src/core/lsp.ts`
-- [ ] T004 Créer `src/core/lsp/factory.ts` avec `LspProviderFactory`
-- [ ] T005 Créer `src/core/lsp/index.ts` pour les re-exports
-- [ ] T006 Modifier `src/core/analyzer.ts` pour utiliser `LspProviderFactory`
-- [ ] T007 Supprimer l'ancien `src/core/lsp.ts`
-- [ ] T008 Vérifier que `spaghetti-compass explore` fonctionne toujours pour TypeScript
+- [x] T001 Créer `src/core/lsp/types.ts` avec interface `LspProvider` et `DefinitionResult`
+- [x] T002 Créer `src/core/lsp/null.ts` avec `NullLspProvider` (no-op fallback)
+- [x] T003 Créer `src/core/lsp/typescript.ts` en migrant le code de `src/core/lsp.ts`
+- [x] T004 Créer `src/core/lsp/factory.ts` avec `LspProviderFactory`
+- [x] T005 Créer `src/core/lsp/index.ts` pour les re-exports
+- [x] T006 Modifier `src/core/analyzer.ts` pour utiliser `LspProviderFactory`
+- [x] T007 Supprimer l'ancien `src/core/lsp.ts`
+- [x] T008 Vérifier que `spaghetti-compass explore` fonctionne toujours pour TypeScript
 
 ---
 

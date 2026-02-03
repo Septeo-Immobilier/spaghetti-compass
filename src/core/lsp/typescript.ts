@@ -1,38 +1,33 @@
 /**
- * Service LSP utilisant TypeScript Language Service pour "Go to Definition"
+ * TypeScriptLspProvider - Provider utilisant TypeScript Language Service
  */
 
 import ts from 'typescript';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import type { LspProvider, DefinitionResult } from './types.js';
 
 /**
- * Résultat de la recherche de définition
+ * Provider LSP pour TypeScript/JavaScript
+ * Utilise directement l'API TypeScript (pas de processus externe)
  */
-export interface DefinitionResult {
-  /** Chemin absolu du fichier contenant la définition */
-  filePath: string;
-  /** Numéro de ligne (1-indexed) */
-  line: number;
-  /** Numéro de colonne (1-indexed) */
-  column: number;
-  /** Nom du symbole défini */
-  name?: string;
-}
+export class TypeScriptLspProvider implements LspProvider {
+  readonly name = 'typescript';
+  readonly supportedExtensions = ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs'];
 
-/**
- * Service wrapper autour du TypeScript Language Service
- * Permet de résoudre "Go to Definition" comme le fait l'IDE
- */
-export class LspService {
-  private languageService: ts.LanguageService;
+  private languageService: ts.LanguageService | null = null;
   private files: Map<string, { version: number; content: string }> = new Map();
-  private projectRoot: string;
-  private compilerOptions: ts.CompilerOptions;
+  private projectRoot: string = '';
+  private compilerOptions: ts.CompilerOptions = {};
 
-  constructor(projectRoot: string, tsConfigPath?: string) {
+  async isAvailable(): Promise<boolean> {
+    // TypeScript est toujours disponible car c'est une dépendance du projet
+    return true;
+  }
+
+  async initialize(projectRoot: string, configPath?: string): Promise<void> {
     this.projectRoot = projectRoot;
-    this.compilerOptions = this.loadCompilerOptions(tsConfigPath);
+    this.compilerOptions = this.loadCompilerOptions(configPath);
 
     const servicesHost: ts.LanguageServiceHost = {
       getScriptFileNames: () => Array.from(this.files.keys()),
@@ -42,7 +37,7 @@ export class LspService {
       },
       getScriptSnapshot: (fileName) => {
         // Essayer le cache d'abord
-        let file = this.files.get(fileName);
+        const file = this.files.get(fileName);
         if (file) {
           return ts.ScriptSnapshot.fromString(file.content);
         }
@@ -100,9 +95,6 @@ export class LspService {
     };
   }
 
-  /**
-   * Enregistre un fichier dans le service
-   */
   addFile(filePath: string, content?: string): void {
     const absolutePath = path.resolve(filePath);
     if (content !== undefined) {
@@ -113,10 +105,14 @@ export class LspService {
     }
   }
 
-  /**
-   * Trouve la définition d'un symbole à une position donnée
-   */
-  getDefinition(filePath: string, position: number): DefinitionResult | null {
+  async getDefinition(
+    filePath: string,
+    position: number
+  ): Promise<DefinitionResult | null> {
+    if (!this.languageService) {
+      return null;
+    }
+
     const absolutePath = path.resolve(filePath);
 
     // S'assurer que le fichier est chargé
@@ -157,14 +153,10 @@ export class LspService {
     }
   }
 
-  /**
-   * Trouve la définition d'un symbole par son nom dans un fichier
-   * Recherche la première occurrence du symbole et retourne sa définition
-   */
-  getDefinitionByName(
+  async getDefinitionByName(
     filePath: string,
     symbolName: string
-  ): DefinitionResult | null {
+  ): Promise<DefinitionResult | null> {
     const absolutePath = path.resolve(filePath);
 
     // S'assurer que le fichier est chargé
@@ -178,11 +170,6 @@ export class LspService {
     }
 
     // Trouver la position du symbole dans le fichier
-    // On cherche des patterns comme:
-    // - import { symbolName } from '...'
-    // - symbolName(
-    // - symbolName.
-    // - this.symbolName
     const patterns = [
       new RegExp(`\\b${this.escapeRegex(symbolName)}\\s*\\(`), // function call
       new RegExp(`\\b${this.escapeRegex(symbolName)}\\s*\\.`), // property access
@@ -194,11 +181,10 @@ export class LspService {
     for (const pattern of patterns) {
       const match = pattern.exec(file.content);
       if (match) {
-        // Trouver la position exacte du symbole dans le match
         const matchStart = match.index;
         const symbolIndex = file.content.indexOf(symbolName, matchStart);
         if (symbolIndex !== -1) {
-          const result = this.getDefinition(absolutePath, symbolIndex);
+          const result = await this.getDefinition(absolutePath, symbolIndex);
           if (result) {
             return result;
           }
@@ -209,14 +195,11 @@ export class LspService {
     return null;
   }
 
-  /**
-   * Trouve la définition d'un symbole importé depuis un module donné
-   */
-  getDefinitionFromImport(
+  async getDefinitionFromImport(
     sourceFilePath: string,
     symbolName: string,
     _moduleSpecifier: string
-  ): DefinitionResult | null {
+  ): Promise<DefinitionResult | null> {
     const absolutePath = path.resolve(sourceFilePath);
 
     // S'assurer que le fichier est chargé
@@ -231,11 +214,6 @@ export class LspService {
 
     // Chercher l'import statement qui contient ce symbole
     const content = file.content;
-
-    // Pattern pour trouver l'import avec le nom du symbole
-    // import { symbolName } from '...'
-    // import { other, symbolName } from '...'
-    // import { symbolName as alias } from '...'
     const importPattern = new RegExp(
       `import\\s*\\{[^}]*\\b${this.escapeRegex(symbolName)}\\b[^}]*\\}\\s*from`,
       'g'
@@ -243,7 +221,6 @@ export class LspService {
 
     const match = importPattern.exec(content);
     if (match) {
-      // Trouver la position exacte du symbole dans l'import
       const matchText = match[0];
       const symbolIndexInMatch = matchText.indexOf(symbolName);
       const position = match.index + symbolIndexInMatch;
@@ -262,11 +239,11 @@ export class LspService {
     return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   }
 
-  /**
-   * Libère les ressources du service
-   */
-  dispose(): void {
-    this.languageService.dispose();
+  async dispose(): Promise<void> {
+    if (this.languageService) {
+      this.languageService.dispose();
+      this.languageService = null;
+    }
     this.files.clear();
   }
 }

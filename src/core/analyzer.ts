@@ -15,7 +15,7 @@ import { DependencyGraphBuilder } from './graph.js';
 import { PathResolver } from './resolver.js';
 import { TypeScriptParser } from '../parser/typescript.js';
 import { TsConfigResolver } from './tsconfig.js';
-import { LspService } from './lsp.js';
+import { LspProviderFactory, type LspProvider } from './lsp/index.js';
 
 /**
  * Options d'analyse
@@ -37,8 +37,12 @@ export class Analyzer {
   private visited: Set<string> = new Set();
   /** Cache des exports par fichier pour éviter de re-parser */
   private exportsCache: Map<string, ExportInfo[]> = new Map();
-  /** Service LSP pour résoudre les définitions */
-  private lspService: LspService;
+  /** Factory pour créer les providers LSP */
+  private lspFactory: LspProviderFactory;
+  /** Provider LSP courant (initialisé lors de l'analyse) */
+  private lspProvider: LspProvider | null = null;
+  /** Contexte d'analyse enrichi */
+  private enhancedContext: ContextInfo;
 
   constructor(context: ContextInfo) {
     // Découvrir automatiquement tsconfig et package.json si non fournis
@@ -61,13 +65,11 @@ export class Analyzer {
       }
     }
 
+    this.enhancedContext = enhancedContext;
     this.resolver = new PathResolver(enhancedContext);
     this.parser = new TypeScriptParser();
     this.graphBuilder = new DependencyGraphBuilder(enhancedContext);
-    this.lspService = new LspService(
-      enhancedContext.projectRoot || enhancedContext.rootPath,
-      enhancedContext.tsConfigPath
-    );
+    this.lspFactory = new LspProviderFactory();
   }
 
   /**
@@ -76,6 +78,13 @@ export class Analyzer {
   async analyze(entryPath: string, options: AnalyzerOptions = {}): Promise<DependencyGraph> {
     const absoluteEntry = path.resolve(entryPath);
     this.graphBuilder.setEntryPoint(absoluteEntry);
+
+    // Obtenir le provider LSP approprié pour ce fichier
+    this.lspProvider = await this.lspFactory.getProvider(
+      absoluteEntry,
+      this.enhancedContext.projectRoot || this.enhancedContext.rootPath,
+      this.enhancedContext.tsConfigPath
+    );
 
     // Analyser le fichier d'entrée
     await this.analyzeFile(absoluteEntry, options);
@@ -298,8 +307,10 @@ export class Analyzer {
       return;
     }
 
-    // S'assurer que le fichier source est chargé dans le service LSP
-    this.lspService.addFile(filePath);
+    // S'assurer que le fichier source est chargé dans le provider LSP
+    if (this.lspProvider) {
+      this.lspProvider.addFile(filePath);
+    }
 
     // Créer le noeud fonction
     const funcId = `${filePath}:${functionName}`;
@@ -316,11 +327,13 @@ export class Analyzer {
     // Traiter les appels de fonction avec résolution LSP
     for (const call of func.calls) {
       // Utiliser le LSP pour trouver la définition de la fonction appelée
-      const definition = this.lspService.getDefinitionFromImport(
-        filePath,
-        call.name,
-        call.fromModule || ''
-      );
+      const definition = this.lspProvider
+        ? await this.lspProvider.getDefinitionFromImport(
+            filePath,
+            call.name,
+            call.fromModule || ''
+          )
+        : null;
 
       let targetPath: string | undefined;
       let targetLine: number | undefined;
@@ -370,7 +383,7 @@ export class Analyzer {
   /**
    * Libère les ressources
    */
-  dispose(): void {
-    this.lspService.dispose();
+  async dispose(): Promise<void> {
+    await this.lspFactory.disposeAll();
   }
 }
