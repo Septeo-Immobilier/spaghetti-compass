@@ -38,13 +38,13 @@
 
 **Checkpoint**: Le `LspProcessManager` peut communiquer avec un processus LSP
 
-- [ ] T009 Créer `src/core/lsp/json-rpc.ts` avec types JSON-RPC (Request, Response, Notification)
-- [ ] T010 Créer `src/core/lsp/process-manager.ts` avec spawn, communication stdin/stdout
-- [ ] T011 Implémenter les méthodes LSP de base: `initialize`, `shutdown`
-- [ ] T012 Implémenter `textDocument/didOpen` notification
-- [ ] T013 Implémenter `textDocument/definition` request
-- [ ] T014 Ajouter gestion des timeouts (défaut 5s) dans `process-manager.ts`
-- [ ] T015 Ajouter cache des processus LSP par projet
+- [x] T009 Créer `src/core/lsp/json-rpc.ts` avec types JSON-RPC (Request, Response, Notification)
+- [x] T010 Créer `src/core/lsp/process-manager.ts` avec spawn, communication stdin/stdout
+- [x] T011 Implémenter les méthodes LSP de base: `initialize`, `shutdown`
+- [x] T012 Implémenter `textDocument/didOpen` notification
+- [x] T013 Implémenter `textDocument/definition` request
+- [x] T014 Ajouter gestion des timeouts (défaut 5s) dans `process-manager.ts`
+- [x] T015 Ajouter cache des processus LSP par projet
 
 ---
 
