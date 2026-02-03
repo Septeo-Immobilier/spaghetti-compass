@@ -201,7 +201,7 @@ export class Analyzer {
     importInfo: ImportInfo,
     options: AnalyzerOptions
   ): Promise<void> {
-    const { moduleSpecifier, type, line, resolved, importedNames } = importInfo;
+    const { moduleSpecifier, type, line, importedNames } = importInfo;
 
     // Résoudre le chemin du module
     const resolvedPath = this.resolver.resolve(moduleSpecifier, fromFile);
@@ -243,11 +243,12 @@ export class Analyzer {
     }
 
     // Créer l'arête
+    // L'import est considéré comme résolu si on a trouvé le fichier cible
     const edge: GraphEdge = {
       from: fromFile,
       to: targetId,
       type,
-      resolved: resolved && !!resolvedPath,
+      resolved: !!resolvedPath,
       line,
       targetLine,
       importedNames: importedNames.length > 0 ? importedNames : undefined,
@@ -313,6 +314,172 @@ export class Analyzer {
   }
 
   /**
+   * Vérifie si un chemin de fichier pointe vers une bibliothèque native/runtime
+   * (fichiers TypeScript lib.*.d.ts, node_modules, etc.)
+   */
+  private isNativeLibraryPath(filePath: string): boolean {
+    // Fichiers de définition TypeScript natifs (lib.es*.d.ts, lib.dom.d.ts, etc.)
+    if (/[\\/]lib\.[^/\\]+\.d\.ts$/.test(filePath)) {
+      return true;
+    }
+
+    // Fichiers dans node_modules (sauf si c'est notre propre code)
+    if (filePath.includes('node_modules')) {
+      return true;
+    }
+
+    // Fichiers de définition de types (@types/*)
+    if (filePath.includes('@types')) {
+      return true;
+    }
+
+    return false;
+  }
+
+  /**
+   * Vérifie si un appel de fonction est une méthode native sur une variable locale
+   * (ex: array.find, string.split, etc.) ou une classe/fonction native du langage
+   */
+  private isNativeMethodCall(callName: string, fromModule: string | undefined): boolean {
+    // Classes natives PHP courantes
+    const phpNativeClasses = new Set([
+      'DateTime', 'DateTimeImmutable', 'DateInterval', 'DatePeriod', 'DateTimeZone',
+      'Exception', 'Error', 'TypeError', 'ValueError', 'ArgumentCountError',
+      'stdClass', 'ArrayObject', 'ArrayIterator', 'Iterator', 'Generator',
+      'Closure', 'ReflectionClass', 'ReflectionMethod', 'ReflectionProperty',
+      'PDO', 'PDOStatement', 'PDOException',
+      'SplFileInfo', 'SplFileObject', 'DirectoryIterator', 'RecursiveDirectoryIterator',
+      'JsonException', 'RuntimeException', 'InvalidArgumentException', 'LogicException',
+    ]);
+
+    // Vérifier si c'est une classe native PHP
+    if (phpNativeClasses.has(callName)) {
+      return true;
+    }
+
+    // Si c'est importé d'un module, ce n'est pas une méthode native locale
+    if (fromModule) {
+      return false;
+    }
+
+    // Méthodes natives communes sur les types de base (JavaScript/TypeScript)
+    const nativeMethods = new Set([
+      // Array methods
+      'find', 'filter', 'map', 'reduce', 'forEach', 'some', 'every', 'includes',
+      'indexOf', 'lastIndexOf', 'push', 'pop', 'shift', 'unshift', 'slice', 'splice',
+      'concat', 'join', 'reverse', 'sort', 'flat', 'flatMap', 'fill', 'copyWithin',
+      'entries', 'keys', 'values', 'at', 'findIndex', 'findLast', 'findLastIndex',
+      'toReversed', 'toSorted', 'toSpliced', 'with',
+      // String methods
+      'split', 'trim', 'trimStart', 'trimEnd', 'toLowerCase', 'toUpperCase',
+      'substring', 'substr', 'slice', 'replace', 'replaceAll', 'match', 'matchAll',
+      'search', 'charAt', 'charCodeAt', 'codePointAt', 'startsWith', 'endsWith',
+      'padStart', 'padEnd', 'repeat', 'normalize', 'localeCompare',
+      // Object methods
+      'hasOwnProperty', 'toString', 'valueOf', 'toLocaleString',
+      // Promise methods
+      'then', 'catch', 'finally',
+      // Map/Set methods
+      'get', 'set', 'has', 'delete', 'clear', 'size',
+    ]);
+
+    // Vérifier si c'est un appel de méthode (obj.method)
+    if (callName.includes('.')) {
+      const methodName = callName.split('.').pop();
+      if (methodName && nativeMethods.has(methodName)) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  /**
+   * Trouve une méthode interne dans le même fichier (pour résolution sans LSP)
+   * Cherche les méthodes de la même classe (ex: AuthService.findUserByEmail pour AuthService.login)
+   */
+  private findInternalMethod(
+    methodName: string,
+    currentFunctionName: string,
+    parseResult: ParseResult
+  ): { name: string; line: number } | null {
+    // Extraire le nom de la classe de la fonction courante (ex: "AuthService" de "AuthService.login")
+    const classParts = currentFunctionName.split('.');
+    const className = classParts.length > 1 ? classParts[0] : null;
+
+    if (className) {
+      // Chercher une méthode de la même classe
+      const fullMethodName = `${className}.${methodName}`;
+      const method = parseResult.functions.find((f) => f.name === fullMethodName);
+      if (method) {
+        return { name: method.name, line: method.line };
+      }
+    }
+
+    // Chercher une fonction au niveau module (sans classe)
+    const func = parseResult.functions.find((f) => f.name === methodName);
+    if (func) {
+      return { name: func.name, line: func.line };
+    }
+
+    return null;
+  }
+
+  /**
+   * Cache des fichiers parsés pour éviter de re-parser
+   */
+  private parsedFilesCache: Map<string, ParseResult> = new Map();
+
+  /**
+   * Trouve une méthode dans les fichiers importés (pour PHP sans LSP)
+   * Cherche dans les fichiers require/include
+   */
+  private findMethodInImportedFiles(
+    methodName: string,
+    sourceFilePath: string,
+    parseResult: ParseResult
+  ): { filePath: string; name: string; line: number } | null {
+    // Parcourir les imports de type require
+    for (const imp of parseResult.imports) {
+      if (imp.type !== 'require') continue;
+
+      // Résoudre le chemin du fichier importé
+      const resolvedPath = this.resolver.resolve(imp.moduleSpecifier, sourceFilePath);
+      if (!resolvedPath || !this.isSupported(resolvedPath)) continue;
+
+      // Parser le fichier importé (avec cache)
+      let importedParseResult = this.parsedFilesCache.get(resolvedPath);
+      if (!importedParseResult) {
+        const parsed = this.parseFile(resolvedPath, { extractFunctions: true });
+        if (parsed) {
+          importedParseResult = parsed;
+          this.parsedFilesCache.set(resolvedPath, parsed);
+        }
+      }
+
+      if (!importedParseResult) continue;
+
+      // Chercher la méthode dans ce fichier
+      // Format: ClassName.methodName
+      const method = importedParseResult.functions.find((f) => {
+        const parts = f.name.split('.');
+        const funcMethodName = parts.length > 1 ? parts[1] : parts[0];
+        return funcMethodName === methodName;
+      });
+
+      if (method) {
+        return {
+          filePath: resolvedPath,
+          name: method.name,
+          line: method.line,
+        };
+      }
+    }
+
+    return null;
+  }
+
+  /**
    * Analyse les dépendances d'une fonction spécifique
    * Utilise le LSP pour résoudre les définitions des appels de fonction
    */
@@ -333,6 +500,9 @@ export class Analyzer {
       return;
     }
 
+    // Utiliser le nom complet de la fonction (avec classe si applicable)
+    const fullFunctionName = func.name;
+
     // S'assurer que le fichier source est chargé dans le provider LSP
     if (this.lspProvider) {
       this.lspProvider.addFile(filePath);
@@ -352,14 +522,60 @@ export class Analyzer {
 
     // Traiter les appels de fonction avec résolution LSP
     for (const call of func.calls) {
-      // Utiliser le LSP pour trouver la définition de la fonction appelée
-      const definition = this.lspProvider
-        ? await this.lspProvider.getDefinitionFromImport(
-            filePath,
-            call.name,
-            call.fromModule || ''
-          )
-        : null;
+      // Ignorer les méthodes natives sur les variables locales (array.find, etc.)
+      if (this.isNativeMethodCall(call.name, call.fromModule)) {
+        continue;
+      }
+
+      let definition: { filePath: string; line: number; column?: number } | null = null;
+
+      // Stratégie de résolution selon le type d'appel
+      if (call.isThisCall) {
+        // Pour $this->method, chercher dans la même classe via le parser
+        const internalMethod = this.findInternalMethod(call.name, fullFunctionName, parseResult);
+        if (internalMethod) {
+          definition = {
+            filePath: filePath,
+            line: internalMethod.line,
+            column: 1,
+          };
+        }
+      } else if (call.objectName) {
+        // Pour $obj->method, chercher dans les fichiers importés
+        const importedMethod = this.findMethodInImportedFiles(call.name, filePath, parseResult);
+        if (importedMethod) {
+          definition = {
+            filePath: importedMethod.filePath,
+            line: importedMethod.line,
+            column: 1,
+          };
+        } else if (this.lspProvider) {
+          // Fallback: utiliser le LSP
+          definition = await this.lspProvider.getDefinitionByName(filePath, call.name);
+        }
+      } else if (this.lspProvider) {
+        // Pour les autres appels, utiliser le LSP
+        definition = await this.lspProvider.getDefinitionFromImport(
+          filePath,
+          call.name,
+          call.fromModule || ''
+        );
+      } else {
+        // Sans LSP, essayer de résoudre via le parser (méthodes internes)
+        const internalMethod = this.findInternalMethod(call.name, fullFunctionName, parseResult);
+        if (internalMethod) {
+          definition = {
+            filePath: filePath,
+            line: internalMethod.line,
+            column: 1,
+          };
+        }
+      }
+
+      // Ignorer les définitions qui pointent vers des bibliothèques natives
+      if (definition && this.isNativeLibraryPath(definition.filePath)) {
+        continue;
+      }
 
       let targetPath: string | undefined;
       let targetLine: number | undefined;
@@ -369,7 +585,7 @@ export class Analyzer {
       let location: 'internal' | 'external' | 'third-party';
 
       if (definition) {
-        // Définition trouvée via LSP
+        // Définition trouvée via parser ou LSP
         targetPath = definition.filePath;
         targetLine = definition.line;
         targetColumn = definition.column;
