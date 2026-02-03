@@ -1,0 +1,12 @@
+# Force LF line endings for shell scripts and executables
+bin/* text eol=lf
+*.sh text eol=lf
+
+# Force LF for all source code
+*.ts text eol=lf
+*.js text eol=lf
+*.json text eol=lf
+*.md text eol=lf
+
+# Explicitly declare text files
+* text=auto
