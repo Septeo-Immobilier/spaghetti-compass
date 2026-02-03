@@ -1,15 +1,17 @@
 # Spaghetti Compass 🍝🧭
 
-CLI tool to explore and visualize code dependency relations in JavaScript/TypeScript projects.
+CLI tool to explore and visualize code dependency relations in **TypeScript**, **Python**, and **PHP** projects.
 
 ## Features
 
+- **Multi-language support**: TypeScript/JavaScript, Python, and PHP
 - **Explore file dependencies**: Analyze imports/exports from any entry point
 - **Context-aware classification**: Define a "context" folder to distinguish internal vs external dependencies
 - **Transitive analysis**: See the complete dependency graph, not just direct imports
 - **Function-level exploration**: Drill down to specific functions and their call graphs
 - **Multiple output formats**: Human-readable tree or JSON for tooling integration
 - **Circular dependency detection**: Automatically identifies and reports cycles
+- **Clickable navigation**: Output paths are formatted for Ctrl+Click in VSCode/Cursor
 
 ## Installation
 
@@ -48,7 +50,7 @@ After local installation, the `spaghetti-compass` command is available globally.
 ## Quick Start
 
 ```bash
-# Explore a file's dependencies
+# Explore a TypeScript file's dependencies
 spaghetti-compass explore src/main.ts
 
 # Explore with a specific context directory
@@ -60,6 +62,87 @@ spaghetti-compass explore src/main.ts --json
 # Show help
 spaghetti-compass --help
 spaghetti-compass explore --help
+```
+
+## Multi-Language Examples
+
+### TypeScript / JavaScript
+
+```bash
+# Explore file dependencies
+spaghetti-compass explore fixtures/typescript/main.ts
+
+# Explore a specific method (Class.method format)
+spaghetti-compass explore fixtures/typescript/services/auth-service.ts:authenticate
+```
+
+Output:
+```
+═════════════════════════════════════════════════════════════════
+ 📍 Entry Point: fixtures/typescript/services/auth-service.ts:1:1
+ 📁 Context: /home/user/project
+ 📊 Stats: 3 internal, 0 external, 0 third-party, 0 unresolved
+═════════════════════════════════════════════════════════════════
+
+fixtures/typescript/services/auth-service.ts:1:1
+├── 📥 IMPORTS (internal)
+│   └── fixtures/typescript/services/user-service.ts:11:9 (getAll)
+```
+
+### Python
+
+```bash
+# Explore file dependencies (resolves relative imports like .services.user_service)
+spaghetti-compass explore fixtures/python/app/main.py
+```
+
+Output:
+```
+═════════════════════════════════════════════════════════════════
+ 📍 Entry Point: fixtures/python/app/main.py:1:1
+ 📁 Context: /home/user/project
+ 📊 Stats: 5 internal, 0 external, 11 third-party, 0 unresolved
+═════════════════════════════════════════════════════════════════
+
+fixtures/python/app/main.py:1:1
+├── 📥 IMPORTS (internal)
+│   ├── fixtures/python/app/services/user_service.py:38:1
+│   │   ├── fixtures/python/app/models/user.py:28:1
+│   │   └── fixtures/python/app/services/auth_service.py:25:1
+│   ├── fixtures/python/app/services/auth_service.py:62:1
+│   └── fixtures/python/app/utils/helpers.py:28:1
+
+─────────────────────────────────────────────────────────────────
+ 🔄 Circular Dependencies Detected:
+    fixtures/python/app/services/user_service.py ↔ fixtures/python/app/services/auth_service.py
+─────────────────────────────────────────────────────────────────
+```
+
+### PHP
+
+```bash
+# Explore file dependencies (resolves require_once __DIR__ paths)
+spaghetti-compass explore fixtures/php/src/Services/AuthService.php
+
+# Explore a specific method - resolves $this->method and $obj->method calls
+spaghetti-compass explore fixtures/php/src/Services/AuthService.php:login
+```
+
+Output:
+```
+═════════════════════════════════════════════════════════════════
+ 📍 Entry Point: fixtures/php/src/Services/AuthService.php:1:1
+ 📁 Context: /home/user/project
+ 📊 Stats: 7 internal, 0 external, 0 third-party, 0 unresolved
+═════════════════════════════════════════════════════════════════
+
+fixtures/php/src/Services/AuthService.php:1:1
+├── 📥 IMPORTS (internal)
+│   ├── fixtures/php/src/Services/AuthService.php:112:1 (findUserByEmail)
+│   ├── fixtures/php/src/Models/User.php:68:1 (verifyPassword)
+│   ├── fixtures/php/src/Services/AuthService.php:122:1 (generateToken)
+│   ├── fixtures/php/src/Models/User.php:38:1 (getId)
+│   └── fixtures/php/src/Models/User.php:63:1 (setLastLogin)
 ```
 
 ## Usage
@@ -155,7 +238,7 @@ When hyperlinks are enabled, file paths become clickable links using the OSC 8 e
 |--------|-------|-------------|---------|
 | `--context <dir>` | `-c` | Context directory for classification | `.` |
 | `--json` | `-j` | Output as JSON | `false` |
-| `--include <glob...>` | `-i` | Include patterns | `**/*.ts, **/*.js` |
+| `--include <glob...>` | `-i` | Include patterns | `**/*.ts, **/*.js, **/*.py, **/*.php` |
 | `--exclude <glob...>` | `-e` | Exclude patterns | `**/node_modules/**` |
 | `--no-transitive` | | Direct dependencies only | `false` |
 | `--absolute-paths` | | Use absolute paths instead of relative | `false` |
@@ -163,6 +246,14 @@ When hyperlinks are enabled, file paths become clickable links using the OSC 8 e
 | `--hyperlinks` | | Enable OSC 8 hyperlinks (advanced) | `false` |
 | `--help` | `-h` | Show help | |
 | `--version` | `-v` | Show version | |
+
+## Supported Languages
+
+| Language | File Extensions | Import Resolution | Function-Level |
+|----------|----------------|-------------------|----------------|
+| TypeScript | `.ts`, `.tsx`, `.js`, `.jsx` | ✅ Full (ESM, CJS, aliases) | ✅ LSP-based |
+| Python | `.py`, `.pyi` | ✅ Relative imports (`.module`) | ⚠️ Basic |
+| PHP | `.php` | ✅ `require_once __DIR__` | ✅ Method calls |
 
 ## Exit Codes
 
@@ -212,17 +303,23 @@ npm run lint
 # Build first
 docker run --rm -v "$(pwd)":/app -w /app node:20 npm run build
 
-# Basic exploration
-docker run --rm -v "$(pwd)":/app -w /app node:20 node dist/cli/index.js explore fixtures/ts-app/main.ts -c fixtures/ts-app/
+# TypeScript - file exploration
+docker run --rm -v "$(pwd)":/app -w /app node:20 node bin/spaghetti-compass.js explore fixtures/typescript/main.ts
+
+# TypeScript - function exploration
+docker run --rm -v "$(pwd)":/app -w /app node:20 node bin/spaghetti-compass.js explore fixtures/typescript/services/auth-service.ts:authenticate
+
+# Python - file exploration (with circular dependency detection)
+docker run --rm -v "$(pwd)":/app -w /app node:20 node bin/spaghetti-compass.js explore fixtures/python/app/main.py
+
+# PHP - function exploration (resolves method calls across files)
+docker run --rm -v "$(pwd)":/app -w /app node:20 node bin/spaghetti-compass.js explore fixtures/php/src/Services/AuthService.php:login
 
 # JSON output
-docker run --rm -v "$(pwd)":/app -w /app node:20 node dist/cli/index.js explore fixtures/ts-app/main.ts -c fixtures/ts-app/ --json
-
-# Function exploration
-docker run --rm -v "$(pwd)":/app -w /app node:20 node dist/cli/index.js explore "fixtures/ts-app/main.ts:main" -c fixtures/ts-app/
+docker run --rm -v "$(pwd)":/app -w /app node:20 node bin/spaghetti-compass.js explore fixtures/typescript/main.ts --json
 
 # Direct dependencies only
-docker run --rm -v "$(pwd)":/app -w /app node:20 node dist/cli/index.js explore fixtures/ts-app/main.ts -c fixtures/ts-app/ --no-transitive
+docker run --rm -v "$(pwd)":/app -w /app node:20 node bin/spaghetti-compass.js explore fixtures/typescript/main.ts --no-transitive
 ```
 
 ## License
