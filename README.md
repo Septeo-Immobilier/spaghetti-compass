@@ -74,23 +74,25 @@ spaghetti-compass explore src/main.ts --context src/
 Output:
 ```
 ═════════════════════════════════════════════════════════════════
- 📍 Entry Point: main.ts
+ 📍 Entry Point: main.ts:1:1
  📁 Context: /project/src
  📊 Stats: 12 internal, 3 external, 5 third-party, 0 unresolved
 ═════════════════════════════════════════════════════════════════
 
-main.ts
+main.ts:1:1
 ├── 📥 IMPORTS (internal)
-│   ├── services/user-service.ts
-│   │   ├── models/user.ts
-│   │   └── utils/validation.ts
-│   └── utils/helpers.ts
+│   ├── services/user-service.ts:3:1
+│   │   ├── models/user.ts:2:1
+│   │   └── utils/validation.ts:4:1
+│   └── utils/helpers.ts:5:1
 ├── 📦 IMPORTS (third-party)
-│   ├── lodash
-│   └── express
+│   ├── lodash:1:1
+│   └── express:2:1
 └── ⚠️  DYNAMIC IMPORTS (unresolved)
     └── ./plugins/* (line 42)
 ```
+
+The `path:line:column` format allows Ctrl+Click navigation in VSCode/Cursor terminals.
 
 ### Function-level exploration
 
@@ -120,6 +122,33 @@ spaghetti-compass explore src/main.ts -c src/ --no-transitive
 spaghetti-compass explore src/main.ts -c src/ --exclude "**/*.test.ts" --exclude "**/*.spec.ts"
 ```
 
+### Clickable navigation
+
+By default, file paths are formatted as `path:line:column` which is recognized by VSCode/Cursor terminals and allows Ctrl+Click navigation to the exact line.
+
+```bash
+# Default output shows clickable paths
+spaghetti-compass explore src/main.ts -c src/
+# Output: src/services/user-service.ts:5:1
+
+# Use absolute paths for better compatibility
+spaghetti-compass explore src/main.ts -c src/ --absolute-paths
+# Output: /project/src/services/user-service.ts:5:1
+
+# Disable line:column format if not needed
+spaghetti-compass explore src/main.ts -c src/ --no-links
+# Output: src/services/user-service.ts
+```
+
+### OSC 8 Hyperlinks (advanced)
+
+```bash
+# Enable OSC 8 hyperlinks for terminals that support them
+spaghetti-compass explore src/main.ts -c src/ --hyperlinks
+```
+
+When hyperlinks are enabled, file paths become clickable links using the OSC 8 escape sequence. This works in terminals that support OSC 8 hyperlinks (iTerm2, Windows Terminal, some Linux terminals).
+
 ## Options
 
 | Option | Alias | Description | Default |
@@ -129,6 +158,9 @@ spaghetti-compass explore src/main.ts -c src/ --exclude "**/*.test.ts" --exclude
 | `--include <glob...>` | `-i` | Include patterns | `**/*.ts, **/*.js` |
 | `--exclude <glob...>` | `-e` | Exclude patterns | `**/node_modules/**` |
 | `--no-transitive` | | Direct dependencies only | `false` |
+| `--absolute-paths` | | Use absolute paths instead of relative | `false` |
+| `--no-links` | | Disable `path:line:column` format | `false` |
+| `--hyperlinks` | | Enable OSC 8 hyperlinks (advanced) | `false` |
 | `--help` | `-h` | Show help | |
 | `--version` | `-v` | Show version | |
 

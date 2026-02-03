@@ -37,6 +37,20 @@ export interface GraphNode {
   path?: string;
   /** Classification de la localisation */
   location: NodeLocation;
+  /** Ligne de définition (pour fonctions/classes) */
+  line?: number;
+}
+
+/**
+ * Informations sur un alias TypeScript résolu
+ */
+export interface AliasInfo {
+  /** Import original (ex: "@/core/service") */
+  original: string;
+  /** Pattern qui a matché (ex: "@/*") */
+  pattern: string;
+  /** Source de résolution */
+  resolvedVia: string;
 }
 
 /**
@@ -53,8 +67,58 @@ export interface GraphEdge {
   resolved: boolean;
   /** Numéro de ligne de l'import/appel dans le fichier source */
   line?: number;
+  /** Chemin du fichier où le symbole est défini (pour navigation LSP) */
+  targetPath?: string;
+  /** Numéro de ligne de définition dans le fichier cible (pour navigation) */
+  targetLine?: number;
+  /** Numéro de colonne de définition dans le fichier cible (pour navigation) */
+  targetColumn?: number;
   /** Noms importés pour les imports nommés */
   importedNames?: string[];
+  /** Informations sur l'alias TypeScript si résolu via tsconfig */
+  aliasInfo?: AliasInfo;
+}
+
+/**
+ * Mapping de path TypeScript (alias → chemins cibles)
+ */
+export interface PathMapping {
+  /** Pattern de l'alias (ex: "@/*", "@core/*") */
+  pattern: string;
+  /** Regex compilée pour le matching */
+  regex: RegExp;
+  /** Chemins cibles (en ordre de priorité) */
+  targets: string[];
+  /** true si le pattern contient un wildcard */
+  hasWildcard: boolean;
+}
+
+/**
+ * Configuration TypeScript parsée
+ */
+export interface TsConfigInfo {
+  /** Chemin absolu du tsconfig.json */
+  configPath: string;
+  /** Répertoire de base pour la résolution (baseUrl résolu en absolu) */
+  baseUrl: string | null;
+  /** Mappings de paths (patterns → chemins cibles) */
+  paths: PathMapping[];
+  /** Chemin du tsconfig parent si extends est utilisé */
+  extendsFrom: string | null;
+}
+
+/**
+ * Résultat de résolution d'un alias
+ */
+export interface ResolvedAlias {
+  /** Import original (ex: "@/core/service") */
+  original: string;
+  /** Chemin résolu absolu (ex: "/project/src/core/service.ts") */
+  resolved: string | null;
+  /** Pattern qui a matché (ex: "@/*") */
+  matchedPattern: string | null;
+  /** Raison si non résolu */
+  error: string | null;
 }
 
 /**
@@ -69,6 +133,10 @@ export interface ContextInfo {
   includePatterns: string[];
   /** Globs des fichiers exclus */
   excludePatterns: string[];
+  /** Chemin absolu du dossier racine du projet (package.json) */
+  projectRoot?: string;
+  /** Chemin absolu du tsconfig.json à utiliser */
+  tsConfigPath?: string;
 }
 
 /**
@@ -87,6 +155,8 @@ export interface GraphStats {
   thirdPartyNodes: number;
   /** Arêtes non résolues (imports dynamiques) */
   unresolvedEdges: number;
+  /** Nombre d'imports résolus via alias TypeScript */
+  aliasResolutions?: number;
   /** Liste des cycles détectés */
   circularDependencies: string[][];
 }
@@ -191,6 +261,14 @@ export interface FunctionCallInfo {
   name: string;
   /** Numéro de ligne de l'appel */
   line: number;
+  /** Colonne de l'appel */
+  column?: number;
   /** Module d'où vient la fonction (si import) */
   fromModule?: string;
+  /** Chemin absolu du fichier où la fonction est définie (résolu via LSP) */
+  definitionPath?: string;
+  /** Ligne de définition de la fonction */
+  definitionLine?: number;
+  /** Colonne de définition de la fonction */
+  definitionColumn?: number;
 }

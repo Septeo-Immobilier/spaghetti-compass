@@ -4,6 +4,18 @@
 
 import type { DependencyGraph, GraphNode, GraphEdge } from '../types/index.js';
 
+/**
+ * Options de formatage
+ */
+export interface TextFormatOptions {
+  /** Activer les hyperliens OSC 8 (format file://) */
+  hyperlinks?: boolean;
+  /** Utiliser des chemins absolus au lieu de relatifs */
+  absolutePaths?: boolean;
+  /** Désactiver les liens cliquables (format chemin:ligne:colonne) */
+  noLinks?: boolean;
+}
+
 // Symboles Unicode
 const SYMBOLS = {
   entryPoint: '📍',
@@ -22,17 +34,155 @@ const SYMBOLS = {
 };
 
 /**
+ * Génère un hyperlien cliquable (format OSC 8)
+ */
+function createHyperlink(text: string, url: string): string {
+  // Séquence d'échappement ANSI OSC 8: \e]8;;URL\e\\texte\e]8;;\e\\
+  return `\u001b]8;;${url}\u001b\\${text}\u001b]8;;\u001b\\`;
+}
+
+/**
+ * Crée un hyperlien vers un fichier
+ */
+function createFileLink(text: string, filePath: string, line?: number): string {
+  const url = line ? `file://${filePath}#L${line}` : `file://${filePath}`;
+  return createHyperlink(text, url);
+}
+
+/**
+ * Informations sur un package externe
+ */
+interface PackageInfo {
+  /** Nom du package (ex: "lodash", "@nestjs/core") */
+  name: string;
+  /** Version du package */
+  version: string;
+  /** Chemin relatif dans le package */
+  internalPath: string;
+}
+
+/**
+ * Vérifie si un chemin est dans node_modules
+ */
+function isExternalPath(filePath: string): boolean {
+  return filePath.includes('/node_modules/') || filePath.includes('\\node_modules\\');
+}
+
+/**
+ * Extrait les informations du package depuis un chemin node_modules
+ */
+function extractPackageInfo(filePath: string, _projectRoot?: string): PackageInfo | null {
+  const nodeModulesIndex = filePath.lastIndexOf('node_modules');
+  if (nodeModulesIndex === -1) return null;
+
+  // Chemin après node_modules/
+  const afterNodeModules = filePath.substring(nodeModulesIndex + 'node_modules/'.length);
+
+  let packageName: string;
+  let internalPath: string;
+
+  // Gérer les scoped packages (@org/package)
+  if (afterNodeModules.startsWith('@')) {
+    const parts = afterNodeModules.split('/');
+    if (parts.length < 2) return null;
+    packageName = `${parts[0]}/${parts[1]}`;
+    internalPath = parts.slice(2).join('/');
+  } else {
+    const parts = afterNodeModules.split('/');
+    packageName = parts[0];
+    internalPath = parts.slice(1).join('/');
+  }
+
+  // Note: La version serait idéalement lue depuis package.json du module
+  // mais cela nécessiterait un accès fs synchrone. Pour le MVP, on affiche '?'
+  const version = '?';
+
+  return {
+    name: packageName,
+    version,
+    internalPath: internalPath || 'index',
+  };
+}
+
+/**
+ * Formate un chemin en format cliquable (chemin:ligne:colonne)
+ * 
+ * @param filePath - Chemin du fichier (absolu ou relatif)
+ * @param line - Numéro de ligne (1-indexed)
+ * @param column - Numéro de colonne (1-indexed, défaut: 1)
+ * @param options - Options de formatage
+ * @param context - Contexte pour les chemins relatifs
+ */
+function formatClickablePath(
+  filePath: string,
+  line?: number,
+  column: number = 1,
+  options: TextFormatOptions = {},
+  rootPath?: string,
+  projectRoot?: string
+): string {
+  // Si noLinks, retourner juste le chemin
+  if (options.noLinks) {
+    if (options.absolutePaths) {
+      return filePath.startsWith('/') ? filePath : (rootPath ? `${rootPath}/${filePath}` : filePath);
+    }
+    return filePath;
+  }
+
+  // Gérer les fichiers externes (node_modules)
+  const absolutePath = filePath.startsWith('/') ? filePath : (rootPath ? `${rootPath}/${filePath}` : filePath);
+
+  if (isExternalPath(absolutePath)) {
+    const packageInfo = extractPackageInfo(absolutePath, projectRoot);
+    if (packageInfo) {
+      // Format: package@version:path:line:column
+      const basePath = `${packageInfo.name}@${packageInfo.version}:${packageInfo.internalPath}`;
+      if (line !== undefined) {
+        return `${basePath}:${line}:${column}`;
+      }
+      return basePath;
+    }
+  }
+
+  // Déterminer le chemin à utiliser
+  let displayPath: string;
+  if (options.absolutePaths) {
+    displayPath = absolutePath;
+  } else {
+    // Utiliser le chemin relatif s'il ne commence pas par /
+    displayPath = filePath.startsWith('/') && rootPath
+      ? filePath.replace(rootPath + '/', '')
+      : filePath;
+  }
+
+  // Échapper les espaces et caractères spéciaux pour les terminaux
+  // Note: Le format chemin:ligne:colonne n'a pas besoin d'échappement spécial
+  // car les terminaux modernes gèrent bien ce format
+
+  // Ajouter ligne et colonne si disponibles
+  if (line !== undefined) {
+    return `${displayPath}:${line}:${column}`;
+  }
+
+  return displayPath;
+}
+
+/**
  * Formate le graphe en texte lisible
  */
-export function formatText(graph: DependencyGraph): string {
+export function formatText(graph: DependencyGraph, options: TextFormatOptions = {}): string {
   const lines: string[] = [];
+  const rootPath = graph.context.rootPath;
+  const projectRoot = graph.context.projectRoot;
 
   // Header
   lines.push('═'.repeat(65));
-  lines.push(` ${SYMBOLS.entryPoint} Entry Point: ${getEntryPointDisplay(graph)}`);
+  lines.push(` ${SYMBOLS.entryPoint} Entry Point: ${getEntryPointDisplay(graph, options, rootPath, projectRoot)}`);
   lines.push(` ${SYMBOLS.context} Context: ${graph.context.rootPath}`);
+  const aliasCount = graph.stats.aliasResolutions || 0;
+  const aliasSuffix = aliasCount > 0 ? ` (${aliasCount} via alias)` : '';
   lines.push(
-    ` ${SYMBOLS.stats} Stats: ${graph.stats.internalNodes} internal, ${graph.stats.externalNodes} external, ${graph.stats.thirdPartyNodes} third-party, ${graph.stats.unresolvedEdges} unresolved`
+    ` ${SYMBOLS.stats} Stats: ${graph.stats.internalNodes} internal, ${graph.stats.externalNodes} external, ${graph.stats.thirdPartyNodes} third-party, ${graph.stats.unresolvedEdges} unresolved${aliasSuffix}`
   );
   lines.push('═'.repeat(65));
   lines.push('');
@@ -44,8 +194,16 @@ export function formatText(graph: DependencyGraph): string {
     return lines.join('\n');
   }
 
-  // Afficher le fichier d'entrée
-  lines.push(entryNode.path || entryNode.name);
+  // Afficher le fichier d'entrée avec format cliquable
+  const entryDisplay = entryNode.path || entryNode.name;
+  if (options.hyperlinks && entryNode.type === 'file') {
+    const entryFilePath = entryNode.id.startsWith('/') ? entryNode.id : rootPath + '/' + entryNode.id;
+    lines.push(createFileLink(entryDisplay, entryFilePath));
+  } else {
+    // Utiliser le format cliquable chemin:ligne:colonne
+    const clickablePath = formatClickablePath(entryDisplay, 1, 1, options, rootPath, projectRoot);
+    lines.push(clickablePath);
+  }
 
   // Grouper les edges par type et location
   const edges = graph.edges.filter((e) => e.from === graph.entryPoint);
@@ -54,19 +212,19 @@ export function formatText(graph: DependencyGraph): string {
   // Afficher les imports internes
   if (grouped.internal.length > 0) {
     lines.push(`${SYMBOLS.branch} ${SYMBOLS.importInternal} IMPORTS (internal)`);
-    formatEdgeGroup(grouped.internal, graph, lines, `${SYMBOLS.vertical}   `);
+    formatEdgeGroup(grouped.internal, graph, lines, `${SYMBOLS.vertical}   `, new Set(), options, rootPath, projectRoot);
   }
 
   // Afficher les imports externes
   if (grouped.external.length > 0) {
     lines.push(`${SYMBOLS.branch} ${SYMBOLS.importExternal} IMPORTS (external)`);
-    formatEdgeGroup(grouped.external, graph, lines, `${SYMBOLS.vertical}   `);
+    formatEdgeGroup(grouped.external, graph, lines, `${SYMBOLS.vertical}   `, new Set(), options, rootPath, projectRoot);
   }
 
   // Afficher les packages tiers
   if (grouped.thirdParty.length > 0) {
     lines.push(`${SYMBOLS.branch} ${SYMBOLS.thirdParty} IMPORTS (third-party)`);
-    formatEdgeGroup(grouped.thirdParty, graph, lines, `${SYMBOLS.vertical}   `);
+    formatEdgeGroup(grouped.thirdParty, graph, lines, `${SYMBOLS.vertical}   `, new Set(), options, rootPath, projectRoot);
   }
 
   // Afficher les exports
@@ -89,7 +247,10 @@ export function formatText(graph: DependencyGraph): string {
       const prefix = isLast ? SYMBOLS.lastBranch : SYMBOLS.branch;
       const node = graph.nodes.find((n) => n.id === edge.to);
       const lineInfo = edge.line ? ` (line ${edge.line})` : '';
-      lines.push(`    ${prefix} ${node?.name || edge.to}${lineInfo}`);
+      const aliasInfo = edge.aliasInfo
+        ? ` (→ ${edge.aliasInfo.pattern}, file not found)`
+        : '';
+      lines.push(`    ${prefix} ${node?.name || edge.to}${lineInfo}${aliasInfo}`);
     }
   }
 
@@ -111,9 +272,20 @@ export function formatText(graph: DependencyGraph): string {
 /**
  * Obtient l'affichage du point d'entrée
  */
-function getEntryPointDisplay(graph: DependencyGraph): string {
+function getEntryPointDisplay(
+  graph: DependencyGraph,
+  options: TextFormatOptions = {},
+  rootPath?: string,
+  projectRoot?: string
+): string {
   const node = graph.nodes.find((n) => n.id === graph.entryPoint);
-  return node?.path || node?.name || graph.entryPoint;
+  // Utiliser le chemin absolu (node.id) ou relatif (node.path) selon les options
+  const basePath = options.absolutePaths
+    ? (node?.id || graph.entryPoint)
+    : (node?.path || node?.name || graph.entryPoint);
+
+  // Pour le header, on utilise le format cliquable
+  return formatClickablePath(basePath, 1, 1, options, rootPath, projectRoot);
 }
 
 /**
@@ -168,7 +340,10 @@ function formatEdgeGroup(
   graph: DependencyGraph,
   lines: string[],
   prefix: string,
-  visited: Set<string> = new Set()
+  visited: Set<string> = new Set(),
+  options: TextFormatOptions = {},
+  rootPath?: string,
+  projectRoot?: string
 ): void {
   for (let i = 0; i < edges.length; i++) {
     const edge = edges[i];
@@ -178,8 +353,77 @@ function formatEdgeGroup(
 
     if (!node) continue;
 
-    const displayName = node.path || node.name;
-    lines.push(`${prefix}${branchSymbol} ${displayName}`);
+    // Afficher l'alias original si disponible
+    const aliasSuffix = edge.aliasInfo ? ` (${edge.aliasInfo.original})` : '';
+
+    // Créer le texte avec le format approprié
+    let displayText: string;
+
+    // Pour les appels de fonction avec définition résolue via LSP
+    if (node.type === 'function' && edge.targetPath) {
+      // Utiliser le chemin de définition résolu par LSP
+      const defPath = options.absolutePaths
+        ? edge.targetPath
+        : getRelativePathFrom(edge.targetPath, rootPath);
+      const defLine = edge.targetLine ?? 1;
+      const defColumn = edge.targetColumn ?? 1;
+
+      if (options.hyperlinks) {
+        // Mode hyperlinks OSC 8
+        displayText = createFileLink(`${defPath} (${node.name})`, edge.targetPath, defLine);
+      } else if (options.noLinks) {
+        // Mode sans liens
+        displayText = `${defPath} (${node.name})`;
+      } else {
+        // Mode standard : format chemin:ligne:colonne (nom)
+        displayText = `${defPath}:${defLine}:${defColumn} (${node.name})`;
+      }
+    } else if (options.hyperlinks && node.type === 'file') {
+      // Mode hyperlinks OSC 8 pour fichiers
+      const displayName = options.absolutePaths ? node.id : (node.path || node.name);
+      const filePath = node.id.startsWith('/') ? node.id : (rootPath ? rootPath + '/' + node.id : node.id);
+      displayText = createFileLink(displayName, filePath, edge.targetLine ?? edge.line);
+    } else if (options.hyperlinks && node.type === 'function') {
+      // Pour les fonctions internes (appels dans le même fichier), lier vers la ligne dans le fichier parent
+      const displayName = options.absolutePaths ? node.id : (node.path || node.name);
+      if (node.location === 'internal' && edge.line) {
+        const fileId = edge.from.split(':')[0];
+        const fileNode = graph.nodes.find(n => n.id === fileId);
+        if (fileNode) {
+          const filePath = fileNode.id.startsWith('/') ? fileNode.id : (rootPath ? rootPath + '/' + fileNode.id : fileNode.id);
+          displayText = createFileLink(displayName, filePath, edge.line);
+        } else {
+          displayText = displayName;
+        }
+      } else if (node.location === 'external' && node.id.includes(':')) {
+        // Pour les fonctions externes, essayer de lier vers le fichier si possible
+        const parts = node.id.split(':');
+        if (parts.length >= 2) {
+          const moduleName = parts[0];
+          // Essayer de résoudre le module vers un fichier
+          const modulePath = rootPath ? rootPath + '/' + moduleName : moduleName;
+          if (modulePath.endsWith('.ts') || modulePath.endsWith('.js')) {
+            displayText = createFileLink(displayName, modulePath);
+          } else {
+            displayText = displayName;
+          }
+        } else {
+          displayText = displayName;
+        }
+      } else {
+        displayText = displayName;
+      }
+    } else {
+      // Mode standard : format chemin:ligne:colonne
+      const displayName = options.absolutePaths ? node.id : (node.path || node.name);
+      // Utiliser targetLine (ligne de définition dans le fichier cible) si disponible,
+      // sinon fallback sur line (ligne de l'import dans le fichier source)
+      const navigationLine = edge.targetLine ?? edge.line;
+      const navigationColumn = edge.targetColumn ?? 1;
+      displayText = formatClickablePath(displayName, navigationLine, navigationColumn, options, rootPath, projectRoot);
+    }
+
+    lines.push(`${prefix}${branchSymbol} ${displayText}${aliasSuffix}`);
 
     // Afficher les dépendances transitives (seulement pour les fichiers internes)
     if (node.location === 'internal' && !visited.has(node.id)) {
@@ -194,10 +438,23 @@ function formatEdgeGroup(
 
       if (childInternal.length > 0) {
         const newPrefix = prefix + (isLast ? '    ' : `${SYMBOLS.vertical}   `);
-        formatEdgeGroup(childInternal, graph, lines, newPrefix, visited);
+        formatEdgeGroup(childInternal, graph, lines, newPrefix, visited, options, rootPath, projectRoot);
       }
     }
   }
+}
+
+/**
+ * Convertit un chemin absolu en chemin relatif depuis rootPath
+ */
+function getRelativePathFrom(absolutePath: string, rootPath?: string): string {
+  if (!rootPath || !absolutePath.startsWith('/')) {
+    return absolutePath;
+  }
+  if (absolutePath.startsWith(rootPath + '/')) {
+    return absolutePath.slice(rootPath.length + 1);
+  }
+  return absolutePath;
 }
 
 /**

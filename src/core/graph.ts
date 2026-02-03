@@ -152,6 +152,7 @@ export class DependencyGraphBuilder {
       externalNodes: nodes.filter((n) => n.location === 'external').length,
       thirdPartyNodes: nodes.filter((n) => n.location === 'third-party').length,
       unresolvedEdges: edges.filter((e) => !e.resolved).length,
+      aliasResolutions: edges.filter((e) => e.aliasInfo !== undefined).length,
       circularDependencies: this.detectCycles(),
     };
   }

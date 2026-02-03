@@ -5,6 +5,7 @@
 import * as path from 'node:path';
 import * as fs from 'node:fs';
 import type { NodeLocation, ContextInfo } from '../types/index.js';
+import { TsConfigResolver } from './tsconfig.js';
 
 /**
  * Résout les chemins de modules et classifie leur localisation
@@ -12,9 +13,13 @@ import type { NodeLocation, ContextInfo } from '../types/index.js';
 export class PathResolver {
   private context: ContextInfo;
   private resolvedCache: Map<string, string | null> = new Map();
+  private tsConfigResolver: TsConfigResolver | null = null;
 
   constructor(context: ContextInfo) {
     this.context = context;
+    if (context.tsConfigPath) {
+      this.tsConfigResolver = new TsConfigResolver(context.tsConfigPath);
+    }
   }
 
   /**
@@ -27,6 +32,11 @@ export class PathResolver {
       moduleSpecifier.startsWith('/') ||
       /^[a-zA-Z]:/.test(moduleSpecifier)
     ) {
+      return false;
+    }
+
+    // Si c'est un alias TypeScript, ce n'est PAS un package npm
+    if (this.tsConfigResolver?.matchesAlias(moduleSpecifier)) {
       return false;
     }
 
@@ -57,6 +67,16 @@ export class PathResolver {
     }
 
     let resolved: string | null = null;
+
+    // Essayer d'abord la résolution via alias TypeScript
+    if (this.tsConfigResolver) {
+      const aliasResult = this.tsConfigResolver.resolveAlias(moduleSpecifier, fromFile);
+      if (aliasResult.resolved) {
+        resolved = aliasResult.resolved;
+        this.resolvedCache.set(cacheKey, resolved);
+        return resolved;
+      }
+    }
 
     if (this.isNpmPackage(moduleSpecifier)) {
       // Pour les packages npm, on retourne le nom du package
@@ -134,7 +154,10 @@ export class PathResolver {
 
     // Normaliser les chemins pour comparaison
     const normalizedResolved = path.resolve(resolvedPath);
-    const normalizedContext = path.resolve(this.context.rootPath);
+    
+    // Utiliser projectRoot si disponible, sinon rootPath
+    const projectRoot = this.context.projectRoot || this.context.rootPath;
+    const normalizedContext = path.resolve(projectRoot);
 
     // Dans node_modules -> third-party
     if (normalizedResolved.includes('node_modules')) {
