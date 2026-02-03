@@ -37,6 +37,8 @@ export interface GraphNode {
   path?: string;
   /** Classification de la localisation */
   location: NodeLocation;
+  /** Ligne de définition (pour fonctions/classes) */
+  line?: number;
 }
 
 /**
@@ -65,6 +67,12 @@ export interface GraphEdge {
   resolved: boolean;
   /** Numéro de ligne de l'import/appel dans le fichier source */
   line?: number;
+  /** Chemin du fichier où le symbole est défini (pour navigation LSP) */
+  targetPath?: string;
+  /** Numéro de ligne de définition dans le fichier cible (pour navigation) */
+  targetLine?: number;
+  /** Numéro de colonne de définition dans le fichier cible (pour navigation) */
+  targetColumn?: number;
   /** Noms importés pour les imports nommés */
   importedNames?: string[];
   /** Informations sur l'alias TypeScript si résolu via tsconfig */
@@ -253,6 +261,14 @@ export interface FunctionCallInfo {
   name: string;
   /** Numéro de ligne de l'appel */
   line: number;
+  /** Colonne de l'appel */
+  column?: number;
   /** Module d'où vient la fonction (si import) */
   fromModule?: string;
+  /** Chemin absolu du fichier où la fonction est définie (résolu via LSP) */
+  definitionPath?: string;
+  /** Ligne de définition de la fonction */
+  definitionLine?: number;
+  /** Colonne de définition de la fonction */
+  definitionColumn?: number;
 }

@@ -31,7 +31,7 @@ const VERSION = packageJson.version;
 function parseEntry(entry: string): { file: string; functionName?: string } {
   // Format: path/to/file.ts:functionName
   const colonIndex = entry.lastIndexOf(':');
-  
+
   // Vérifier si c'est un chemin Windows (C:\...)
   if (colonIndex > 1 && entry[colonIndex - 1] !== '\\') {
     return {
@@ -39,7 +39,7 @@ function parseEntry(entry: string): { file: string; functionName?: string } {
       functionName: entry.substring(colonIndex + 1),
     };
   }
-  
+
   return { file: entry };
 }
 
@@ -80,7 +80,9 @@ program
   .option('-t, --tsconfig <path>', 'Path to tsconfig.json (default: auto-discover)')
   .option('-r, --root <path>', 'Project root directory (default: auto-discover from package.json)')
   .option('--no-tsconfig', 'Disable TypeScript alias resolution')
-  .option('--hyperlinks', 'Enable clickable hyperlinks in terminal output', false)
+  .option('--hyperlinks', 'Enable clickable hyperlinks in terminal output (OSC 8 format)', false)
+  .option('--absolute-paths', 'Use absolute paths instead of relative paths', false)
+  .option('--no-links', 'Disable clickable path:line:column format')
   .action(async (entry: string, options) => {
     try {
       // Parser l'entrée
@@ -178,6 +180,8 @@ program
       // Options de formatage
       const formatOptions = {
         hyperlinks: options.hyperlinks,
+        absolutePaths: options.absolutePaths,
+        noLinks: options.links === false, // --no-links sets options.links to false
       };
 
       // Analyser
