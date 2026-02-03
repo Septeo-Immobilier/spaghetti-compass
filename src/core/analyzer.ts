@@ -14,8 +14,11 @@ import type {
 import { DependencyGraphBuilder } from './graph.js';
 import { PathResolver } from './resolver.js';
 import { TypeScriptParser } from '../parser/typescript.js';
+import { PhpParser } from '../parser/php.js';
+import { PythonParser } from '../parser/python.js';
 import { TsConfigResolver } from './tsconfig.js';
 import { LspProviderFactory, type LspProvider } from './lsp/index.js';
+import type { ParseResult } from '../types/index.js';
 
 /**
  * Options d'analyse
@@ -32,7 +35,9 @@ export interface AnalyzerOptions {
  */
 export class Analyzer {
   private resolver: PathResolver;
-  private parser: TypeScriptParser;
+  private tsParser: TypeScriptParser;
+  private phpParser: PhpParser;
+  private pythonParser: PythonParser;
   private graphBuilder: DependencyGraphBuilder;
   private visited: Set<string> = new Set();
   /** Cache des exports par fichier pour éviter de re-parser */
@@ -67,7 +72,9 @@ export class Analyzer {
 
     this.enhancedContext = enhancedContext;
     this.resolver = new PathResolver(enhancedContext);
-    this.parser = new TypeScriptParser();
+    this.tsParser = new TypeScriptParser();
+    this.phpParser = new PhpParser();
+    this.pythonParser = new PythonParser();
     this.graphBuilder = new DependencyGraphBuilder(enhancedContext);
     this.lspFactory = new LspProviderFactory();
   }
@@ -93,6 +100,33 @@ export class Analyzer {
   }
 
   /**
+   * Parse un fichier avec le parser approprié selon son extension
+   */
+  private parseFile(filePath: string, options: { extractFunctions?: boolean } = {}): ParseResult | null {
+    if (TypeScriptParser.isSupported(filePath)) {
+      return this.tsParser.parse(filePath, options);
+    }
+    if (PhpParser.isSupported(filePath)) {
+      return this.phpParser.parse(filePath, options);
+    }
+    if (PythonParser.isSupported(filePath)) {
+      return this.pythonParser.parse(filePath, options);
+    }
+    return null;
+  }
+
+  /**
+   * Vérifie si un fichier est supporté par un des parsers
+   */
+  static isSupported(filePath: string): boolean {
+    return (
+      TypeScriptParser.isSupported(filePath) ||
+      PhpParser.isSupported(filePath) ||
+      PythonParser.isSupported(filePath)
+    );
+  }
+
+  /**
    * Analyse un fichier et ses dépendances
    */
   private async analyzeFile(filePath: string, options: AnalyzerOptions): Promise<void> {
@@ -103,9 +137,13 @@ export class Analyzer {
     this.visited.add(filePath);
 
     // Parser le fichier
-    const parseResult = this.parser.parse(filePath, {
+    const parseResult = this.parseFile(filePath, {
       extractFunctions: !!options.functionName,
     });
+
+    if (!parseResult) {
+      return; // Fichier non supporté
+    }
 
     // Créer le noeud pour ce fichier
     const location = this.resolver.classifyLocation(filePath, filePath);
@@ -149,12 +187,15 @@ export class Analyzer {
 
     if (!exports) {
       // Parser le fichier pour obtenir les exports
-      if (!TypeScriptParser.isSupported(filePath)) {
+      if (!Analyzer.isSupported(filePath)) {
         return undefined;
       }
 
       try {
-        const parseResult = await this.parser.parse(filePath);
+        const parseResult = this.parseFile(filePath);
+        if (!parseResult) {
+          return undefined;
+        }
         exports = parseResult.exports;
         this.exportsCache.set(filePath, exports);
       } catch {
@@ -234,7 +275,7 @@ export class Analyzer {
       options.transitive !== false &&
       resolvedPath &&
       location === 'internal' &&
-      TypeScriptParser.isSupported(resolvedPath)
+      Analyzer.isSupported(resolvedPath)
     ) {
       await this.analyzeFile(resolvedPath, options);
     }
@@ -280,7 +321,7 @@ export class Analyzer {
       options.transitive !== false &&
       resolvedPath &&
       location === 'internal' &&
-      TypeScriptParser.isSupported(resolvedPath)
+      Analyzer.isSupported(resolvedPath)
     ) {
       await this.analyzeFile(resolvedPath, options);
     }
@@ -293,7 +334,7 @@ export class Analyzer {
   private async analyzeFunctionDependencies(
     filePath: string,
     functionName: string,
-    parseResult: ReturnType<TypeScriptParser['parse']>
+    parseResult: ParseResult
   ): Promise<void> {
     // Trouver la fonction - chercher d'abord le nom exact, puis avec le format Class.methodName
     let func = parseResult.functions.find((f) => f.name === functionName);
