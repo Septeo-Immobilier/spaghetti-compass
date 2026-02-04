@@ -169,20 +169,39 @@ export class TypeScriptLspProvider implements LspProvider {
       return null;
     }
 
+    // Si le symbolName contient un point (ex: "userService.getAll"), extraire la méthode
+    const parts = symbolName.split('.');
+    const methodName = parts.length > 1 ? parts[parts.length - 1] : symbolName;
+    const propertyName = parts.length > 1 ? parts[0] : null;
+
     // Trouver la position du symbole dans le fichier
-    const patterns = [
+    const patterns: RegExp[] = [];
+
+    if (propertyName) {
+      // Pour les appels comme this.userService.getAll() ou userService.getAll()
+      patterns.push(
+        new RegExp(`this\\.${this.escapeRegex(propertyName)}\\.${this.escapeRegex(methodName)}\\s*\\(`),
+        new RegExp(`${this.escapeRegex(propertyName)}\\.${this.escapeRegex(methodName)}\\s*\\(`),
+      );
+    }
+
+    // Patterns génériques
+    patterns.push(
+      new RegExp(`\\.${this.escapeRegex(methodName)}\\s*\\(`), // .method() call
       new RegExp(`\\b${this.escapeRegex(symbolName)}\\s*\\(`), // function call
       new RegExp(`\\b${this.escapeRegex(symbolName)}\\s*\\.`), // property access
       new RegExp(`\\{[^}]*\\b${this.escapeRegex(symbolName)}\\b[^}]*\\}\\s*from`), // named import
       new RegExp(`this\\.${this.escapeRegex(symbolName)}`), // this.method
       new RegExp(`\\b${this.escapeRegex(symbolName)}\\b`), // any occurrence
-    ];
+    );
 
     for (const pattern of patterns) {
       const match = pattern.exec(file.content);
       if (match) {
         const matchStart = match.index;
-        const symbolIndex = file.content.indexOf(symbolName, matchStart);
+        // Pour les appels de méthode, on veut la position du nom de la méthode
+        const targetSymbol = propertyName ? methodName : symbolName;
+        const symbolIndex = file.content.indexOf(targetSymbol, matchStart);
         if (symbolIndex !== -1) {
           const result = await this.getDefinition(absolutePath, symbolIndex);
           if (result) {
