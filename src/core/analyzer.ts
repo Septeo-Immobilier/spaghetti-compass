@@ -10,6 +10,7 @@ import type {
   GraphEdge,
   ImportInfo,
   ExportInfo,
+  CallType,
 } from '../types/index.js';
 import { DependencyGraphBuilder } from './graph.js';
 import { PathResolver } from './resolver.js';
@@ -26,6 +27,10 @@ export interface AnalyzerOptions {
   transitive?: boolean;
   /** Nom de fonction à analyser (optionnel) */
   functionName?: string;
+  /** Profondeur maximale d'exploration récursive (défaut: 5) */
+  maxDepth?: number;
+  /** Limiter l'exploration au fichier d'entrée uniquement */
+  sameFileOnly?: boolean;
 }
 
 /**
@@ -44,6 +49,10 @@ export class Analyzer {
   private lspProvider: LspProvider | null = null;
   /** Contexte d'analyse enrichi */
   private enhancedContext: ContextInfo;
+  /** Set des fonctions déjà visitées (pour éviter les boucles dans l'exploration récursive) */
+  private visitedFunctions: Set<string> = new Set();
+  /** Options d'analyse courantes */
+  private currentOptions: AnalyzerOptions = {};
 
   constructor(context: ContextInfo) {
     // Découvrir automatiquement tsconfig et package.json si non fournis
@@ -79,6 +88,14 @@ export class Analyzer {
   async analyze(entryPath: string, options: AnalyzerOptions = {}): Promise<DependencyGraph> {
     const absoluteEntry = path.resolve(entryPath);
     this.graphBuilder.setEntryPoint(absoluteEntry);
+
+    // Sauvegarder les options et réinitialiser les sets
+    this.currentOptions = {
+      ...options,
+      maxDepth: options.maxDepth ?? 5,
+      sameFileOnly: options.sameFileOnly ?? false,
+    };
+    this.visitedFunctions.clear();
 
     // Obtenir le provider LSP approprié pour ce fichier
     this.lspProvider = await this.lspFactory.getProvider(
@@ -143,7 +160,7 @@ export class Analyzer {
 
     // Si on analyse une fonction spécifique
     if (options.functionName) {
-      await this.analyzeFunctionDependencies(filePath, options.functionName, parseResult);
+      await this.analyzeFunctionDependencies(filePath, options.functionName, parseResult, 0);
       return;
     }
 
@@ -480,14 +497,50 @@ export class Analyzer {
   }
 
   /**
-   * Analyse les dépendances d'une fonction spécifique
+   * Classifie un appel de fonction
+   */
+  private classifyCall(
+    sourceFilePath: string,
+    targetFilePath: string | undefined,
+    fromModule: string | undefined
+  ): CallType {
+    if (!targetFilePath) {
+      // Si pas de fichier cible résolu, c'est probablement externe
+      return fromModule ? 'external' : 'internal-same-file';
+    }
+
+    // Vérifier si c'est le même fichier
+    if (targetFilePath === sourceFilePath) {
+      return 'internal-same-file';
+    }
+
+    // Vérifier si c'est un fichier externe (node_modules, etc.)
+    const location = this.resolver.classifyLocation(targetFilePath, targetFilePath);
+    if (location === 'external' || location === 'third-party') {
+      return 'external';
+    }
+
+    return 'internal-other-file';
+  }
+
+  /**
+   * Analyse les dépendances d'une fonction spécifique de manière récursive
    * Utilise le LSP pour résoudre les définitions des appels de fonction
    */
   private async analyzeFunctionDependencies(
     filePath: string,
     functionName: string,
-    parseResult: ParseResult
+    parseResult: ParseResult,
+    currentDepth: number = 0
   ): Promise<void> {
+    const maxDepth = this.currentOptions.maxDepth ?? 5;
+    const sameFileOnly = this.currentOptions.sameFileOnly ?? false;
+
+    // Vérifier la profondeur maximale
+    if (currentDepth > maxDepth) {
+      return;
+    }
+
     // Trouver la fonction - chercher d'abord le nom exact, puis avec le format Class.methodName
     let func = parseResult.functions.find((f) => f.name === functionName);
 
@@ -503,22 +556,36 @@ export class Analyzer {
     // Utiliser le nom complet de la fonction (avec classe si applicable)
     const fullFunctionName = func.name;
 
+    // Créer un ID unique pour cette fonction
+    const funcId = `${filePath}:${fullFunctionName}`;
+
+    // Vérifier si on a déjà visité cette fonction (éviter les boucles)
+    if (this.visitedFunctions.has(funcId)) {
+      return;
+    }
+    this.visitedFunctions.add(funcId);
+
     // S'assurer que le fichier source est chargé dans le provider LSP
     if (this.lspProvider) {
       this.lspProvider.addFile(filePath);
     }
 
     // Créer le noeud fonction
-    const funcId = `${filePath}:${functionName}`;
     const funcNode: GraphNode = {
       id: funcId,
       type: 'function',
-      name: functionName,
+      name: fullFunctionName,
       path: this.resolver.getRelativePath(filePath),
       location: this.resolver.classifyLocation(filePath, filePath),
+      line: func.line,
+      depth: currentDepth,
     };
     this.graphBuilder.addNode(funcNode);
-    this.graphBuilder.setEntryPoint(funcId);
+
+    // Si c'est le point d'entrée (depth 0), définir comme entry point
+    if (currentDepth === 0) {
+      this.graphBuilder.setEntryPoint(funcId);
+    }
 
     // Traiter les appels de fonction avec résolution LSP
     for (const call of func.calls) {
@@ -527,11 +594,22 @@ export class Analyzer {
         continue;
       }
 
+      // Ignorer les appels récursifs directs (même fonction)
+      if (call.name === fullFunctionName ||
+        call.name === functionName ||
+        (call.isThisCall && fullFunctionName.endsWith(`.${call.name}`))) {
+        continue;
+      }
+
       let definition: { filePath: string; line: number; column?: number } | null = null;
 
       // Stratégie de résolution selon le type d'appel
-      if (call.isThisCall) {
-        // Pour $this->method, chercher dans la même classe via le parser
+      // Déterminer si c'est un appel sur une propriété (this.property.method vs this.method)
+      const isPropertyCall = call.isThisCall && call.name.includes('.');
+      const simpleMethodName = call.name.includes('.') ? call.name.split('.').pop()! : call.name;
+
+      if (call.isThisCall && !isPropertyCall) {
+        // Pour this.method() direct, chercher dans la même classe via le parser
         const internalMethod = this.findInternalMethod(call.name, fullFunctionName, parseResult);
         if (internalMethod) {
           definition = {
@@ -539,6 +617,18 @@ export class Analyzer {
             line: internalMethod.line,
             column: 1,
           };
+        } else if (this.lspProvider) {
+          // Fallback: utiliser le LSP pour this.method()
+          definition = await this.lspProvider.getDefinitionByName(filePath, call.name);
+        }
+      } else if (isPropertyCall && this.lspProvider) {
+        // Pour this.property.method(), utiliser le LSP pour résoudre le type
+        // On cherche la position de l'appel dans le fichier pour obtenir la définition
+        definition = await this.lspProvider.getDefinitionByName(filePath, simpleMethodName);
+
+        // Si pas trouvé, essayer avec le nom complet (property.method)
+        if (!definition) {
+          definition = await this.lspProvider.getDefinitionByName(filePath, call.name);
         }
       } else if (call.objectName) {
         // Pour $obj->method, chercher dans les fichiers importés
@@ -577,6 +667,9 @@ export class Analyzer {
         continue;
       }
 
+      // Classifier l'appel
+      const callType = this.classifyCall(filePath, definition?.filePath, call.fromModule);
+
       let targetPath: string | undefined;
       let targetLine: number | undefined;
       let targetColumn: number | undefined;
@@ -584,27 +677,60 @@ export class Analyzer {
       let nodePath: string | undefined;
       let location: 'internal' | 'external' | 'third-party';
 
+      // Déterminer le nom de la fonction cible pour l'ID du noeud
+      let targetFunctionName = call.name;
+
       if (definition) {
         // Définition trouvée via parser ou LSP
         targetPath = definition.filePath;
         targetLine = definition.line;
         targetColumn = definition.column;
-        nodeId = `${definition.filePath}:${call.name}`;
         nodePath = this.resolver.getRelativePath(definition.filePath);
         location = this.resolver.classifyLocation(definition.filePath, definition.filePath);
+
+        // Chercher le vrai nom de la fonction dans le fichier cible pour avoir un ID cohérent
+        let targetParseResult = parseResult;
+        if (definition.filePath !== filePath) {
+          const cached = this.parsedFilesCache.get(definition.filePath);
+          if (cached) {
+            targetParseResult = cached;
+          } else {
+            const parsed = this.parseFile(definition.filePath, { extractFunctions: true });
+            if (parsed) {
+              targetParseResult = parsed;
+              this.parsedFilesCache.set(definition.filePath, parsed);
+            }
+          }
+        }
+
+        // Trouver la fonction par sa ligne de définition ou par son nom
+        if (targetParseResult) {
+          const methodName = call.name.includes('.') ? call.name.split('.').pop()! : call.name;
+          const funcByLine = targetParseResult.functions.find(f => f.line === definition.line);
+          const funcByName = targetParseResult.functions.find(
+            f => f.name === methodName || f.name.endsWith(`.${methodName}`)
+          );
+          const targetFunc = funcByLine || funcByName;
+          if (targetFunc) {
+            targetFunctionName = targetFunc.name;
+          }
+        }
+
+        nodeId = `${definition.filePath}:${targetFunctionName}`;
       } else {
         // Fallback: utiliser les informations d'origine
-        nodeId = call.fromModule ? `${call.fromModule}:${call.name}` : call.name;
+        nodeId = call.fromModule ? `${call.fromModule}:${call.name}` : `${filePath}:${call.name}`;
         location = call.fromModule ? 'external' : 'internal';
       }
 
       const callNode: GraphNode = {
         id: nodeId,
         type: 'function',
-        name: call.name,
+        name: targetFunctionName,
         path: nodePath,
         location,
         line: targetLine,
+        depth: currentDepth + 1,
       };
       this.graphBuilder.addNode(callNode);
 
@@ -617,8 +743,54 @@ export class Analyzer {
         targetPath, // Chemin du fichier où la fonction est définie
         targetLine, // Ligne de définition
         targetColumn, // Colonne de définition
+        callType, // Classification de l'appel
       };
       this.graphBuilder.addEdge(edge);
+
+      // Explorer récursivement les fonctions internes (si pas externe et pas sameFileOnly ou même fichier)
+      if (
+        definition &&
+        callType !== 'external' &&
+        (!sameFileOnly || callType === 'internal-same-file')
+      ) {
+        // Parser le fichier cible si différent du fichier courant
+        let targetParseResult = parseResult;
+        if (definition.filePath !== filePath) {
+          const parsed = this.parseFile(definition.filePath, { extractFunctions: true });
+          if (parsed) {
+            targetParseResult = parsed;
+            // Mettre en cache
+            this.parsedFilesCache.set(definition.filePath, parsed);
+          } else {
+            continue; // Impossible de parser le fichier cible
+          }
+        }
+
+        // Déterminer le nom de la fonction à chercher dans le fichier cible
+        // Le call.name peut être "propertyName.methodName" mais la fonction dans le fichier
+        // cible sera "ClassName.methodName"
+        let targetFunctionName = call.name;
+
+        // Si c'est un appel via propriété (ex: userService.getAll), extraire juste le nom de méthode
+        if (call.name.includes('.')) {
+          const methodName = call.name.split('.').pop()!;
+          // Chercher d'abord avec le nom de méthode simple
+          const funcByMethod = targetParseResult.functions.find(
+            f => f.name === methodName || f.name.endsWith(`.${methodName}`)
+          );
+          if (funcByMethod) {
+            targetFunctionName = funcByMethod.name;
+          }
+        }
+
+        // Explorer récursivement cette fonction
+        await this.analyzeFunctionDependencies(
+          definition.filePath,
+          targetFunctionName,
+          targetParseResult,
+          currentDepth + 1
+        );
+      }
     }
   }
 
