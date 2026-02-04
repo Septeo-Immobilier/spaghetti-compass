@@ -24,6 +24,14 @@ export type EdgeType =
   | 'call';
 
 /**
+ * Classification d'un appel de fonction
+ */
+export type CallType =
+  | 'internal-same-file'    // Appel à une fonction dans le même fichier
+  | 'internal-other-file'   // Appel à une fonction dans un autre fichier interne
+  | 'external';             // Appel à une fonction externe (node_modules, etc.)
+
+/**
  * Représente un élément analysable dans le graphe de dépendances
  */
 export interface GraphNode {
@@ -39,6 +47,8 @@ export interface GraphNode {
   location: NodeLocation;
   /** Ligne de définition (pour fonctions/classes) */
   line?: number;
+  /** Profondeur dans l'arbre d'exploration (0 = point d'entrée) */
+  depth?: number;
 }
 
 /**
@@ -77,6 +87,8 @@ export interface GraphEdge {
   importedNames?: string[];
   /** Informations sur l'alias TypeScript si résolu via tsconfig */
   aliasInfo?: AliasInfo;
+  /** Classification de l'appel (pour type 'call') */
+  callType?: CallType;
 }
 
 /**
@@ -191,6 +203,10 @@ export interface AnalyzeOptions {
   transitive: boolean;
   /** Sortie JSON */
   json: boolean;
+  /** Profondeur maximale d'exploration récursive (défaut: 5) */
+  maxDepth?: number;
+  /** Limiter l'exploration au fichier d'entrée uniquement */
+  sameFileOnly?: boolean;
 }
 
 /**
