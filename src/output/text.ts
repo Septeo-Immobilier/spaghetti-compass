@@ -31,6 +31,11 @@ const SYMBOLS = {
   lastBranch: '└──',
   vertical: '│',
   indent: '    ',
+  function: '🔹',
+  internalCall: '📥',
+  externalCall: '📦',
+  sameFile: '📄',
+  otherFile: '📂',
 };
 
 /**
@@ -175,7 +180,19 @@ export function formatText(graph: DependencyGraph, options: TextFormatOptions = 
   const rootPath = graph.context.rootPath;
   const projectRoot = graph.context.projectRoot;
 
-  // Header
+  // Trouver le noeud d'entrée
+  const entryNode = graph.nodes.find((n) => n.id === graph.entryPoint);
+  if (!entryNode) {
+    lines.push('No entry point found.');
+    return lines.join('\n');
+  }
+
+  // Vérifier si c'est une analyse de fonction
+  if (entryNode.type === 'function') {
+    return formatFunctionAnalysis(graph, options);
+  }
+
+  // Header pour analyse de fichier
   lines.push('═'.repeat(65));
   lines.push(` ${SYMBOLS.entryPoint} Entry Point: ${getEntryPointDisplay(graph, options, rootPath, projectRoot)}`);
   lines.push(` ${SYMBOLS.context} Context: ${graph.context.rootPath}`);
@@ -186,13 +203,6 @@ export function formatText(graph: DependencyGraph, options: TextFormatOptions = 
   );
   lines.push('═'.repeat(65));
   lines.push('');
-
-  // Trouver le noeud d'entrée
-  const entryNode = graph.nodes.find((n) => n.id === graph.entryPoint);
-  if (!entryNode) {
-    lines.push('No entry point found.');
-    return lines.join('\n');
-  }
 
   // Afficher le fichier d'entrée avec format cliquable
   const entryDisplay = entryNode.path || entryNode.name;
@@ -267,6 +277,201 @@ export function formatText(graph: DependencyGraph, options: TextFormatOptions = 
   }
 
   return lines.join('\n');
+}
+
+/**
+ * Formate une analyse de fonction avec arbre récursif et externes à plat
+ */
+function formatFunctionAnalysis(graph: DependencyGraph, options: TextFormatOptions = {}): string {
+  const lines: string[] = [];
+  const rootPath = graph.context.rootPath;
+  const projectRoot = graph.context.projectRoot;
+
+  const entryNode = graph.nodes.find((n) => n.id === graph.entryPoint);
+  if (!entryNode) {
+    return 'No entry point found.';
+  }
+
+  // Collecter toutes les dépendances externes (à plat)
+  const externalCalls = new Map<string, Set<string>>(); // package -> function names
+
+  // Header
+  lines.push('═'.repeat(65));
+
+  // Extraire le chemin du fichier et le nom de la fonction
+  const filePath = entryNode.path || entryNode.id.split(':')[0];
+  const funcName = entryNode.name;
+  const funcLine = entryNode.line || 1;
+
+  const entryDisplay = formatClickablePath(filePath, funcLine, 1, options, rootPath, projectRoot);
+  lines.push(` ${SYMBOLS.entryPoint} Function: ${funcName}`);
+  lines.push(` ${SYMBOLS.context} File: ${entryDisplay}`);
+  lines.push(` ${SYMBOLS.context} Context: ${graph.context.rootPath}`);
+
+  // Compter les appels internes et externes
+  const allEdges = graph.edges.filter(e => e.type === 'call');
+  const internalEdges = allEdges.filter(e => e.callType !== 'external');
+  const externalEdges = allEdges.filter(e => e.callType === 'external');
+
+  lines.push(
+    ` ${SYMBOLS.stats} Stats: ${internalEdges.length} internal calls, ${externalEdges.length} external calls`
+  );
+  lines.push('═'.repeat(65));
+  lines.push('');
+
+  // Afficher l'arbre récursif des appels internes
+  const visited = new Set<string>();
+
+  // Fonction récursive pour afficher l'arbre
+  function formatFunctionTree(
+    nodeId: string,
+    prefix: string,
+    isLast: boolean,
+    depth: number
+  ): void {
+    const node = graph.nodes.find(n => n.id === nodeId);
+    if (!node) return;
+
+    const branchSymbol = depth === 0 ? '' : (isLast ? SYMBOLS.lastBranch : SYMBOLS.branch);
+
+    // Afficher ce noeud
+    if (depth === 0) {
+      // Point d'entrée
+      const displayPath = formatClickablePath(
+        node.path || nodeId.split(':')[0],
+        node.line || 1,
+        1,
+        options,
+        rootPath,
+        projectRoot
+      );
+      lines.push(`${SYMBOLS.function} ${node.name}`);
+      lines.push(`   ${displayPath} (${node.name})`);
+    } else {
+      // Noeud enfant
+      let displayText: string;
+      if (node.path) {
+        displayText = formatClickablePath(
+          node.path,
+          node.line || 1,
+          1,
+          options,
+          rootPath,
+          projectRoot
+        );
+        displayText = `${displayText} (${node.name})`;
+      } else {
+        displayText = node.name;
+      }
+
+      // Indiquer si c'est le même fichier ou un autre fichier
+      const edge = graph.edges.find(e => e.to === nodeId && e.type === 'call');
+      const callTypeIcon = edge?.callType === 'internal-same-file' ? SYMBOLS.sameFile : SYMBOLS.otherFile;
+
+      lines.push(`${prefix}${branchSymbol} ${callTypeIcon} ${displayText}`);
+    }
+
+    // Éviter les boucles infinies
+    if (visited.has(nodeId)) {
+      return;
+    }
+    visited.add(nodeId);
+
+    // Récupérer les edges sortants de ce noeud
+    const childEdges = graph.edges.filter(e => e.from === nodeId && e.type === 'call');
+
+    // Séparer internes et externes
+    const internalChildren = childEdges.filter(e => e.callType !== 'external');
+    const externalChildren = childEdges.filter(e => e.callType === 'external');
+
+    // Collecter les externes pour l'affichage à plat
+    for (const edge of externalChildren) {
+      const targetNode = graph.nodes.find(n => n.id === edge.to);
+      if (targetNode) {
+        // Extraire le nom du package (module d'où vient la fonction)
+        const packageName = extractPackageName(targetNode.id, edge.targetPath);
+        if (!externalCalls.has(packageName)) {
+          externalCalls.set(packageName, new Set());
+        }
+        externalCalls.get(packageName)!.add(targetNode.name);
+      }
+    }
+
+    // Afficher les enfants internes récursivement
+    const newPrefix = depth === 0 ? '   ' : prefix + (isLast ? '    ' : `${SYMBOLS.vertical}   `);
+
+    for (let i = 0; i < internalChildren.length; i++) {
+      const childEdge = internalChildren[i];
+      const isLastChild = i === internalChildren.length - 1;
+      formatFunctionTree(childEdge.to, newPrefix, isLastChild, depth + 1);
+    }
+  }
+
+  // Démarrer l'affichage depuis le point d'entrée
+  formatFunctionTree(graph.entryPoint, '', true, 0);
+
+  // Afficher les dépendances externes à plat
+  if (externalCalls.size > 0) {
+    lines.push('');
+    lines.push(`${SYMBOLS.branch} ${SYMBOLS.externalCall} EXTERNAL (flat)`);
+
+    const packages = Array.from(externalCalls.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+    for (let i = 0; i < packages.length; i++) {
+      const [packageName, functions] = packages[i];
+      const isLast = i === packages.length - 1;
+      const branchSymbol = isLast ? SYMBOLS.lastBranch : SYMBOLS.branch;
+      const funcList = Array.from(functions).sort().join(', ');
+      lines.push(`${SYMBOLS.vertical}   ${branchSymbol} ${packageName}: ${funcList}`);
+    }
+  }
+
+  // Afficher les dépendances circulaires
+  if (graph.stats.circularDependencies.length > 0) {
+    lines.push('');
+    lines.push('─'.repeat(65));
+    lines.push(` ${SYMBOLS.circular} Circular Dependencies Detected:`);
+    for (const cycle of graph.stats.circularDependencies) {
+      const cycleStr = cycle.map((p) => getShortPath(p, graph)).join(' ↔ ');
+      lines.push(`    ${cycleStr}`);
+    }
+    lines.push('─'.repeat(65));
+  }
+
+  return lines.join('\n');
+}
+
+/**
+ * Extrait le nom du package depuis un ID de noeud ou un chemin
+ */
+function extractPackageName(nodeId: string, targetPath?: string): string {
+  // Si c'est un chemin dans node_modules
+  if (targetPath && (targetPath.includes('node_modules') || targetPath.includes('\\node_modules\\'))) {
+    const info = extractPackageInfo(targetPath);
+    if (info) {
+      return info.name;
+    }
+  }
+
+  // Sinon, utiliser le module specifier s'il est dans l'ID
+  // Format: moduleSpecifier:functionName
+  if (nodeId.includes(':')) {
+    const parts = nodeId.split(':');
+    if (parts.length >= 2) {
+      // Si ça commence par @, c'est un scoped package
+      if (parts[0].startsWith('@')) {
+        return parts[0];
+      }
+      // Sinon prendre le premier segment
+      const firstPart = parts[0];
+      // Si c'est un chemin, prendre le dernier segment
+      if (firstPart.includes('/') || firstPart.includes('\\')) {
+        return firstPart.split(/[/\\]/).pop() || firstPart;
+      }
+      return firstPart;
+    }
+  }
+
+  return 'unknown';
 }
 
 /**
