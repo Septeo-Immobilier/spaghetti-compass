@@ -27,20 +27,54 @@ const VERSION = packageJson.version;
 
 /**
  * Parse l'entrée pour extraire fichier et fonction optionnelle
+ * Formats supportés:
+ *   - path/to/file.ts                     → fichier entier
+ *   - path/to/file.ts:functionName        → fonction simple
+ *   - path/to/file.ts:ClassName.method    → méthode de classe (format standard)
+ *   - path/to/file.ts:ClassName/method    → méthode de classe (format alternatif)
+ *   - path/to/file.ts:ClassName:method    → méthode de classe (format alternatif)
  */
 function parseEntry(entry: string): { file: string; functionName?: string } {
-  // Format: path/to/file.ts:functionName
-  const colonIndex = entry.lastIndexOf(':');
+  // Trouver l'extension du fichier pour savoir où commence la partie fonction
+  const extMatch = entry.match(/\.(ts|tsx|js|jsx|mjs|cjs|py|pyi|php)(?::|\/|$)/i);
 
-  // Vérifier si c'est un chemin Windows (C:\...)
-  if (colonIndex > 1 && entry[colonIndex - 1] !== '\\') {
-    return {
-      file: entry.substring(0, colonIndex),
-      functionName: entry.substring(colonIndex + 1),
-    };
+  if (!extMatch) {
+    // Pas d'extension reconnue, traiter comme un chemin simple
+    return { file: entry };
   }
 
-  return { file: entry };
+  const extEnd = (extMatch.index || 0) + extMatch[0].length - 1;
+  const afterExt = entry.substring(extEnd);
+
+  // Si rien après l'extension, c'est juste un fichier
+  if (!afterExt || afterExt === '') {
+    return { file: entry };
+  }
+
+  // Extraire le fichier
+  const file = entry.substring(0, extEnd);
+
+  // Parser la partie fonction (après le premier séparateur : ou /)
+  const funcPart = afterExt.substring(1);
+
+  if (!funcPart) {
+    return { file };
+  }
+
+  // Normaliser les différents formats vers ClassName.method
+  // Format: ClassName/method ou ClassName:method → ClassName.method
+  let functionName = funcPart;
+
+  // Si c'est le format ClassName/method
+  if (funcPart.includes('/')) {
+    functionName = funcPart.replace('/', '.');
+  }
+  // Si c'est le format ClassName:method (et pas juste :method)
+  else if (funcPart.includes(':')) {
+    functionName = funcPart.replace(':', '.');
+  }
+
+  return { file, functionName };
 }
 
 /**
@@ -83,6 +117,8 @@ program
   .option('--hyperlinks', 'Enable clickable hyperlinks in terminal output (OSC 8 format)', false)
   .option('--absolute-paths', 'Use absolute paths instead of relative paths', false)
   .option('--no-links', 'Disable clickable path:line:column format')
+  .option('-d, --depth <n>', 'Max depth for recursive function exploration (default: 5)', '5')
+  .option('--same-file-only', 'Only explore functions in the same file', false)
   .action(async (entry: string, options) => {
     try {
       // Parser l'entrée
@@ -186,9 +222,12 @@ program
 
       // Analyser
       const analyzer = new Analyzer(context);
+      const maxDepth = parseInt(options.depth, 10) || 5;
       const graph = await analyzer.analyze(entryPath, {
         transitive: analyzeOptions.transitive,
         functionName,
+        maxDepth,
+        sameFileOnly: options.sameFileOnly,
       });
 
       // Vérifier si une fonction a été demandée mais non trouvée
