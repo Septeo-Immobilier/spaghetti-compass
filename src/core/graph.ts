@@ -97,7 +97,34 @@ export class DependencyGraphBuilder {
   }
 
   /**
-   * Détecte les cycles dans le graphe
+   * Extrait le chemin du fichier depuis un node ID
+   * Les IDs peuvent être:
+   * - Un chemin de fichier absolu: /path/to/file.ts
+   * - Un ID de fonction: /path/to/file.ts:functionName
+   * - Un module externe: @nestjs/common:Injectable
+   */
+  private extractFilePath(nodeId: string): string {
+    // Pour les chemins absolus avec fonction (file:function)
+    // On cherche le dernier ':' qui n'est pas précédé d'un chemin Windows (C:\)
+    const colonIndex = nodeId.lastIndexOf(':');
+
+    // Si le colon est à la position 1 (comme C:\), c'est un chemin Windows
+    if (colonIndex > 1) {
+      const beforeColon = nodeId.substring(0, colonIndex);
+      // Si ce qui précède le colon ressemble à un chemin de fichier, c'est un file:function
+      if (beforeColon.includes('/') || beforeColon.includes('\\')) {
+        return beforeColon;
+      }
+    }
+
+    // Sinon, c'est juste un chemin de fichier ou un module
+    return nodeId;
+  }
+
+  /**
+   * Détecte les cycles dans le graphe (dépendances circulaires entre fichiers)
+   * Note: Un appel récursif (fonction qui s'appelle elle-même) n'est PAS une dépendance circulaire.
+   * Une dépendance circulaire nécessite au moins 2 fichiers différents qui s'importent mutuellement.
    */
   detectCycles(): string[][] {
     const cycles: string[][] = [];
@@ -115,12 +142,20 @@ export class DependencyGraphBuilder {
         if (!visited.has(edge.to)) {
           dfs(edge.to);
         } else if (recursionStack.has(edge.to)) {
-          // Cycle détecté
+          // Cycle détecté - vérifier si c'est une vraie dépendance circulaire
           const cycleStart = path.indexOf(edge.to);
           if (cycleStart !== -1) {
             const cycle = path.slice(cycleStart);
             cycle.push(edge.to); // Fermer le cycle
-            cycles.push(cycle);
+
+            // Extraire les fichiers uniques dans le cycle
+            const filesInCycle = new Set(cycle.map((id) => this.extractFilePath(id)));
+
+            // C'est une vraie dépendance circulaire seulement si au moins 2 fichiers différents
+            if (filesInCycle.size > 1) {
+              cycles.push(cycle);
+            }
+            // Sinon c'est juste un appel récursif dans le même fichier - on ignore
           }
         }
       }
