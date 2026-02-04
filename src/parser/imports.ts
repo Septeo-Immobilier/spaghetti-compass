@@ -222,6 +222,7 @@ function hasExportModifier(node: ts.Node): boolean {
 
 /**
  * Extrait les appels de fonction dans une fonction
+ * Détecte aussi les callbacks et les assignations de fonctions à des variables
  */
 export function extractFunctionCalls(
   functionBody: ts.Block | ts.Expression,
@@ -229,39 +230,165 @@ export function extractFunctionCalls(
   importedNames: Map<string, string> // name -> module
 ): FunctionCallInfo[] {
   const calls: FunctionCallInfo[] = [];
+  const seen = new Set<string>();
 
+  // Map des variables qui contiennent des références à des fonctions
+  // variable name -> function reference (ex: "handler" -> "this.processData")
+  const functionVariables = new Map<string, { name: string; fromModule?: string; isThisCall?: boolean }>();
+
+  // Première passe : collecter les assignations de fonctions à des variables
+  function collectFunctionVariables(node: ts.Node): void {
+    // const handler = this.processData;
+    // const fn = someImportedFunction;
+    if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer) {
+      const varName = node.name.text;
+
+      // this.method ou this['method']
+      if (ts.isPropertyAccessExpression(node.initializer)) {
+        if (node.initializer.expression.kind === ts.SyntaxKind.ThisKeyword) {
+          functionVariables.set(varName, {
+            name: node.initializer.name.text,
+            isThisCall: true,
+          });
+        } else if (ts.isIdentifier(node.initializer.expression)) {
+          const objName = node.initializer.expression.text;
+          const methodName = node.initializer.name.text;
+          functionVariables.set(varName, {
+            name: `${objName}.${methodName}`,
+            fromModule: importedNames.get(objName),
+          });
+        }
+      }
+      // Direct function reference: const fn = importedFunction;
+      else if (ts.isIdentifier(node.initializer)) {
+        const refName = node.initializer.text;
+        if (importedNames.has(refName)) {
+          functionVariables.set(varName, {
+            name: refName,
+            fromModule: importedNames.get(refName),
+          });
+        }
+      }
+    }
+    ts.forEachChild(node, collectFunctionVariables);
+  }
+
+  // Deuxième passe : collecter les appels
   function visit(node: ts.Node): void {
     if (ts.isCallExpression(node)) {
       let callName: string | undefined;
       let fromModule: string | undefined;
+      let isThisCall = false;
 
       if (ts.isIdentifier(node.expression)) {
         callName = node.expression.text;
         fromModule = importedNames.get(callName);
       } else if (ts.isPropertyAccessExpression(node.expression)) {
-        // obj.method()
-        const objName = ts.isIdentifier(node.expression.expression)
-          ? node.expression.expression.text
-          : undefined;
         const methodName = node.expression.name.text;
-        callName = objName ? `${objName}.${methodName}` : methodName;
-        if (objName) {
+
+        // this.method() - appel direct sur this
+        if (node.expression.expression.kind === ts.SyntaxKind.ThisKeyword) {
+          callName = methodName;
+          isThisCall = true;
+        }
+        // this.property.method() - appel sur une propriété de this (ex: this.userService.getAll())
+        else if (ts.isPropertyAccessExpression(node.expression.expression)) {
+          const innerExpr = node.expression.expression;
+          if (innerExpr.expression.kind === ts.SyntaxKind.ThisKeyword) {
+            // C'est this.property.method()
+            const propertyName = innerExpr.name.text;
+            callName = `${propertyName}.${methodName}`;
+            isThisCall = true; // C'est un appel via this, même si indirect
+          } else if (ts.isIdentifier(innerExpr.expression)) {
+            // C'est obj.property.method()
+            const objName = innerExpr.expression.text;
+            const propertyName = innerExpr.name.text;
+            callName = `${objName}.${propertyName}.${methodName}`;
+            fromModule = importedNames.get(objName);
+          }
+        }
+        // obj.method() - appel sur un objet importé
+        else if (ts.isIdentifier(node.expression.expression)) {
+          const objName = node.expression.expression.text;
+          callName = `${objName}.${methodName}`;
           fromModule = importedNames.get(objName);
         }
       }
 
       if (callName) {
-        calls.push({
-          name: callName,
-          line: sourceFile.getLineAndCharacterOfPosition(node.getStart()).line + 1,
-          fromModule,
-        });
+        const key = `${callName}:${fromModule || ''}`;
+        if (!seen.has(key)) {
+          seen.add(key);
+          calls.push({
+            name: callName,
+            line: sourceFile.getLineAndCharacterOfPosition(node.getStart()).line + 1,
+            fromModule,
+            isThisCall,
+          });
+        }
+      }
+
+      // Détecter les callbacks passés en argument
+      // Ex: promise.then(this.handler), array.map(processItem)
+      for (const arg of node.arguments) {
+        let callbackInfo: { name: string; fromModule?: string; isThisCall?: boolean } | undefined;
+
+        // Direct function reference: fn(callback)
+        if (ts.isIdentifier(arg)) {
+          const argName = arg.text;
+          // Vérifier si c'est une variable qui contient une référence à une fonction
+          if (functionVariables.has(argName)) {
+            callbackInfo = functionVariables.get(argName);
+          }
+          // Vérifier si c'est une fonction importée
+          else if (importedNames.has(argName)) {
+            callbackInfo = { name: argName, fromModule: importedNames.get(argName) };
+          }
+        }
+        // this.method as callback: fn(this.handler)
+        else if (ts.isPropertyAccessExpression(arg)) {
+          if (arg.expression.kind === ts.SyntaxKind.ThisKeyword) {
+            callbackInfo = { name: arg.name.text, isThisCall: true };
+          } else if (ts.isIdentifier(arg.expression)) {
+            const objName = arg.expression.text;
+            const methodName = arg.name.text;
+            callbackInfo = {
+              name: `${objName}.${methodName}`,
+              fromModule: importedNames.get(objName),
+            };
+          }
+        }
+        // Arrow function with single call: fn(() => this.handler())
+        // ou fn((x) => process(x))
+        else if (ts.isArrowFunction(arg)) {
+          // Si le corps est un appel direct
+          if (ts.isCallExpression(arg.body)) {
+            // Le visit récursif va le capturer
+          }
+          // Si le corps est un bloc, le visit récursif va le capturer
+        }
+
+        if (callbackInfo) {
+          const key = `${callbackInfo.name}:${callbackInfo.fromModule || ''}`;
+          if (!seen.has(key)) {
+            seen.add(key);
+            calls.push({
+              name: callbackInfo.name,
+              line: sourceFile.getLineAndCharacterOfPosition(arg.getStart()).line + 1,
+              fromModule: callbackInfo.fromModule,
+              isThisCall: callbackInfo.isThisCall,
+            });
+          }
+        }
       }
     }
 
     ts.forEachChild(node, visit);
   }
 
+  // Exécuter les deux passes
+  collectFunctionVariables(functionBody);
   visit(functionBody);
+
   return calls;
 }

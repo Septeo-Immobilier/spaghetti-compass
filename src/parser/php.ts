@@ -282,6 +282,7 @@ export class PhpParser implements Parser {
 
   /**
    * Extrait les appels de fonction dans un bloc de code
+   * Détecte aussi les callbacks (array_map, array_filter, usort, etc.)
    */
   private extractFunctionCalls(content: string, importMap: Map<string, string>, currentFunctionName?: string): FunctionCallInfo[] {
     const calls: FunctionCallInfo[] = [];
@@ -330,16 +331,105 @@ export class PhpParser implements Parser {
       'random_bytes', 'random_int', 'password_hash', 'password_verify',
     ]);
 
+    // Fonctions PHP qui acceptent des callbacks
+    const callbackFunctions = new Set([
+      'array_map', 'array_filter', 'array_reduce', 'array_walk', 'array_walk_recursive',
+      'usort', 'uasort', 'uksort', 'preg_replace_callback', 'preg_replace_callback_array',
+      'call_user_func', 'call_user_func_array', 'register_shutdown_function',
+      'set_error_handler', 'set_exception_handler', 'spl_autoload_register',
+    ]);
+
     // Extraire le nom simple de la fonction courante (sans préfixe de classe)
     const currentSimpleName = currentFunctionName?.includes('.')
       ? currentFunctionName.split('.').pop()
       : currentFunctionName;
+
+    // Map des variables qui contiennent des références à des méthodes
+    const methodVariables = new Map<string, { name: string; isThisCall?: boolean; fromModule?: string }>();
 
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
 
       // Ignorer la première ligne (déclaration de la fonction)
       if (i === 0) continue;
+
+      // Détecter les assignations de callbacks: $callback = [$this, 'methodName'];
+      const callbackAssignMatches = line.matchAll(/\$(\w+)\s*=\s*\[\s*\$this\s*,\s*['"](\w+)['"]\s*\]/g);
+      for (const match of callbackAssignMatches) {
+        const varName = match[1];
+        const methodName = match[2];
+        methodVariables.set(varName, { name: methodName, isThisCall: true });
+      }
+
+      // Détecter les assignations: $callback = [$obj, 'methodName'];
+      const objCallbackAssignMatches = line.matchAll(/\$(\w+)\s*=\s*\[\s*\$(\w+)\s*,\s*['"](\w+)['"]\s*\]/g);
+      for (const match of objCallbackAssignMatches) {
+        const varName = match[1];
+        const objName = match[2];
+        const methodName = match[3];
+        if (objName !== 'this') {
+          methodVariables.set(varName, {
+            name: `${objName}.${methodName}`,
+            fromModule: importMap.get(objName)
+          });
+        }
+      }
+
+      // Détecter les callbacks inline: array_map([$this, 'methodName'], ...)
+      const inlineCallbackMatches = line.matchAll(/(\w+)\s*\(\s*\[\s*\$this\s*,\s*['"](\w+)['"]\s*\]/g);
+      for (const match of inlineCallbackMatches) {
+        const funcName = match[1];
+        const methodName = match[2];
+
+        // Ignorer si c'est la fonction courante (récursif)
+        if (methodName === currentSimpleName) continue;
+
+        if (callbackFunctions.has(funcName)) {
+          const callKey = `this.${methodName}`;
+          if (!seen.has(callKey)) {
+            seen.add(callKey);
+            calls.push({
+              name: methodName,
+              line: i + 1,
+              isThisCall: true,
+            });
+          }
+        }
+      }
+
+      // Détecter les callbacks avec Closure::fromCallable([$this, 'method'])
+      const closureCallableMatches = line.matchAll(/Closure::fromCallable\s*\(\s*\[\s*\$this\s*,\s*['"](\w+)['"]\s*\]\s*\)/g);
+      for (const match of closureCallableMatches) {
+        const methodName = match[1];
+        if (methodName === currentSimpleName) continue;
+
+        const callKey = `this.${methodName}`;
+        if (!seen.has(callKey)) {
+          seen.add(callKey);
+          calls.push({
+            name: methodName,
+            line: i + 1,
+            isThisCall: true,
+          });
+        }
+      }
+
+      // Détecter l'utilisation de $callback comme argument si c'est une variable connue
+      for (const [varName, info] of methodVariables) {
+        const varUsageRegex = new RegExp(`\\$${varName}(?![\\w])`, 'g');
+        if (varUsageRegex.test(line)) {
+          const callKey = info.isThisCall ? `this.${info.name}` : info.name;
+          if (!seen.has(callKey)) {
+            seen.add(callKey);
+            calls.push({
+              name: info.name,
+              line: i + 1,
+              isThisCall: info.isThisCall,
+              fromModule: info.fromModule,
+            });
+          }
+        }
+      }
 
       // Appels de fonction: functionName( mais PAS $obj->functionName( ni ClassName::functionName(
       // On utilise un lookbehind négatif pour exclure les appels de méthode
