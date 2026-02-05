@@ -82,10 +82,11 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Publish to npm with provenance (OIDC/Trusted Publisher)
+      - name: Publish to npm with provenance
         if: ${{ github.event.inputs.dry_run != 'true' && steps.semantic-release.outcome == 'success' }}
         run: |
-          # Vérifier si une nouvelle version a été publiée
           PACKAGE_VERSION=$(node -p "require('./package.json').version")
           echo "📦 Publishing version $PACKAGE_VERSION to npm with provenance..."
           npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
