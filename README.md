@@ -265,6 +265,75 @@ When hyperlinks are enabled, file paths become clickable links using the OSC 8 e
 | `3` | Parse error (invalid syntax) |
 | `4` | Function not found |
 
+## Usage by AI Agents
+
+Spaghetti Compass is designed to be easily used by AI agents like **Cursor**, **GitHub Copilot**, and **Claude** for code analysis tasks.
+
+### Quick Commands for Agents
+
+```bash
+# Explore file dependencies (JSON output for parsing)
+npx spaghetti-compass explore src/main.ts --json
+
+# Explore a specific function's call graph
+npx spaghetti-compass explore src/services/auth.ts:login --json
+
+# Check for circular dependencies
+npx spaghetti-compass explore src/index.ts --json | jq '.stats.circularDependencies'
+
+# Count impacted files
+npx spaghetti-compass explore src/utils/helper.ts --json | jq '.nodes | length'
+```
+
+### JSON Output Schema
+
+The `--json` flag outputs a `DependencyGraph` object:
+
+```typescript
+interface DependencyGraph {
+  version: string;           // Schema version (e.g., "1.0.0")
+  generatedAt: string;       // ISO 8601 timestamp
+  context: {
+    rootPath: string;        // Analysis root directory
+    includePatterns: string[];
+    excludePatterns: string[];
+  };
+  entryPoint: string;        // Entry file path
+  nodes: GraphNode[];        // Files, functions, modules
+  edges: GraphEdge[];        // Import/call relationships
+  stats: {
+    totalNodes: number;
+    internalNodes: number;   // Files in context
+    externalNodes: number;   // Files outside context
+    thirdPartyNodes: number; // npm packages
+    unresolvedEdges: number; // Dynamic imports
+    circularDependencies: string[][]; // Detected cycles
+  };
+}
+```
+
+### Example Agent Prompts
+
+You can ask your AI agent:
+
+- *"Use spaghetti-compass to analyze the dependencies of `src/api/routes.ts` and tell me which files would be affected if I modify it"*
+- *"Check if there are any circular dependencies in the `src/` folder using spaghetti-compass"*
+- *"Explore the call graph of the `authenticate` function and list all internal function calls"*
+
+### Programmatic Usage
+
+```bash
+# Save analysis to file
+npx spaghetti-compass explore src/main.ts --json > deps.json
+
+# Extract specific data with jq
+jq '.nodes[] | select(.location == "internal") | .path' deps.json
+jq '.edges[] | select(.type == "call")' deps.json
+jq '.stats.circularDependencies' deps.json
+```
+
+---
+
 ## CI/CD Integration
 
 ### Check for circular dependencies
@@ -280,6 +349,49 @@ When hyperlinks are enabled, file paths become clickable links using the OSC 8 e
       exit 1
     fi
 ```
+
+### Block PRs with new circular dependencies
+
+```yaml
+- name: Dependency analysis
+  run: |
+    npx spaghetti-compass explore src/index.ts --json > deps.json
+    echo "📊 Dependency Stats:"
+    jq '.stats' deps.json
+    
+    # Fail if circular dependencies exist
+    if [ "$(jq '.stats.circularDependencies | length' deps.json)" -gt "0" ]; then
+      echo "❌ Circular dependencies detected!"
+      exit 1
+    fi
+```
+
+## Publishing
+
+### Manual Publishing (npm)
+
+Use GitHub Actions to publish to npm:
+
+1. Go to **Actions** → **Publish to npm**
+2. Click **Run workflow**
+3. Optionally specify a version (`patch`, `minor`, `major`, or `1.2.3`)
+4. **Dry run** is enabled by default - this tests the package without publishing
+5. Uncheck **Dry run** to actually publish to npm
+6. Click **Run workflow**
+
+The workflow will:
+- Build the project
+- Run tests
+- Create and test the package locally
+- Publish to npm (or dry-run)
+
+### Required GitHub Secret
+
+| Secret | Description | How to generate |
+|--------|-------------|-----------------|
+| `NPM_TOKEN` | npm automation token | `npm token create --type=automation` or [npmjs.com/settings/tokens](https://www.npmjs.com/settings/~/tokens) |
+
+---
 
 ## Development
 
