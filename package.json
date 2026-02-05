@@ -40,12 +40,12 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/guilhem/spaghetti-compass.git"
+    "url": "git+https://github.com/gh-septeo/spaghetti-compass.git"
   },
   "bugs": {
-    "url": "https://github.com/guilhem/spaghetti-compass/issues"
+    "url": "https://github.com/gh-septeo/spaghetti-compass/issues"
   },
-  "homepage": "https://github.com/guilhem/spaghetti-compass#readme",
+  "homepage": "https://github.com/gh-septeo/spaghetti-compass#readme",
   "engines": {
     "node": ">=20.0.0"
   },
