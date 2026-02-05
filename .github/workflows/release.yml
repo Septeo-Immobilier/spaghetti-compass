@@ -76,7 +76,16 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Semantic Release
+        id: semantic-release
         if: ${{ github.event.inputs.dry_run != 'true' }}
         run: npx semantic-release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish to npm with provenance (OIDC/Trusted Publisher)
+        if: ${{ github.event.inputs.dry_run != 'true' && steps.semantic-release.outcome == 'success' }}
+        run: |
+          # Vérifier si une nouvelle version a été publiée
+          PACKAGE_VERSION=$(node -p "require('./package.json').version")
+          echo "📦 Publishing version $PACKAGE_VERSION to npm with provenance..."
+          npm publish --provenance --access public
