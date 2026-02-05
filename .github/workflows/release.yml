@@ -66,16 +66,17 @@ jobs:
           echo ""
           echo "✅ Package installs and runs correctly!"
 
+      - name: Verify the integrity of provenance attestations and registry signatures
+        run: npm audit signatures
+
       - name: Semantic Release (Dry Run)
         if: ${{ github.event.inputs.dry_run == 'true' }}
         run: npx semantic-release --dry-run
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Semantic Release
         if: ${{ github.event.inputs.dry_run != 'true' }}
         run: npx semantic-release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
