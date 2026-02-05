@@ -1,3 +1,9 @@
+## [1.0.1](https://github.com/gh-septeo/spaghetti-compass/compare/v1.0.0...v1.0.1) (2026-02-05)
+
+### 🐛 Bug Fixes
+
+* cicd ([575cfe9](https://github.com/gh-septeo/spaghetti-compass/commit/575cfe9f666dd55693702968df04ab76d6bd6206))
+
 ## 1.0.0 (2026-02-05)
 
 ### ✨ Features
