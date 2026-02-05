@@ -43,7 +43,10 @@ function parseEntry(entry: string): { file: string; functionName?: string } {
     return { file: entry };
   }
 
-  const extEnd = (extMatch.index || 0) + extMatch[0].length - 1;
+  // Calculer la position de fin de l'extension
+  const extStart = extMatch.index || 0;
+  const extOnly = extMatch[1]; // Le groupe capturé (ts, tsx, etc.)
+  const extEnd = extStart + 1 + extOnly.length; // +1 pour le point
   const afterExt = entry.substring(extEnd);
 
   // Si rien après l'extension, c'est juste un fichier
@@ -51,7 +54,7 @@ function parseEntry(entry: string): { file: string; functionName?: string } {
     return { file: entry };
   }
 
-  // Extraire le fichier
+  // Extraire le fichier (jusqu'à la fin de l'extension)
   const file = entry.substring(0, extEnd);
 
   // Parser la partie fonction (après le premier séparateur : ou /)
