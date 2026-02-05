@@ -24,11 +24,28 @@
     "exports",
     "typescript",
     "javascript",
+    "python",
+    "php",
     "cli",
-    "analysis"
+    "analysis",
+    "code-analysis",
+    "static-analysis",
+    "circular-dependencies",
+    "refactoring",
+    "ai-agent",
+    "cursor",
+    "copilot"
   ],
-  "author": "",
+  "author": "Guilhem",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/guilhem/spaghetti-compass.git"
+  },
+  "bugs": {
+    "url": "https://github.com/guilhem/spaghetti-compass/issues"
+  },
+  "homepage": "https://github.com/guilhem/spaghetti-compass#readme",
   "engines": {
     "node": ">=20.0.0"
   },
