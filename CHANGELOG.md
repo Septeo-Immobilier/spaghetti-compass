@@ -1,3 +1,28 @@
+## [1.1.0](https://github.com/gh-septeo/spaghetti-compass/compare/v1.0.1...v1.1.0) (2026-02-10)
+
+### ✨ Features
+
+* **php:** add ComposerConfig, Psr4Mapping, PhpNamespaceResolution and resolvedVia on GraphEdge ([0a22573](https://github.com/gh-septeo/spaghetti-compass/commit/0a22573137a0749a478463df081f467e78c2973e))
+* **php:** add ComposerConfig, Psr4Mapping, PhpNamespaceResolution and resolvedVia on GraphEdge ([3aeb467](https://github.com/gh-septeo/spaghetti-compass/commit/3aeb46706d4183bb981c152b290a5fae209acd04))
+* **php:** add ComposerResolver for PSR-4 namespace resolution from composer.json ([21517d4](https://github.com/gh-septeo/spaghetti-compass/commit/21517d438f19513544f649374c13bb4a7adef491))
+* **php:** add ComposerResolver for PSR-4 namespace resolution from composer.json ([c402095](https://github.com/gh-septeo/spaghetti-compass/commit/c402095c6dbc3ae44c3132cff89bf110cf90316c))
+* **php:** extract property types from constructor and resolve $this->property->method() calls ([629af86](https://github.com/gh-septeo/spaghetti-compass/commit/629af86fc94b5b39a1ae82f8503fb32ac41c9158))
+* **php:** extract property types from constructor and resolve $this->property->method() calls ([4ace1e9](https://github.com/gh-septeo/spaghetti-compass/commit/4ace1e9db0287e0e01b87c4d61d2507175aa13cd))
+* **php:** resolve PHP method/class to definition line and ComposerResolver fallback without LSP ([16d907e](https://github.com/gh-septeo/spaghetti-compass/commit/16d907e07f1cfdcbec202addeecfb6672566e230))
+* **php:** resolve PHP method/class to definition line and ComposerResolver fallback without LSP ([d113354](https://github.com/gh-septeo/spaghetti-compass/commit/d113354cc995c048f2cde5de7ef04f21db17d94a))
+* **php:** resolve PHP namespaces in PathResolver via ComposerResolver and classify vendor/ ([be30a47](https://github.com/gh-septeo/spaghetti-compass/commit/be30a4733e0f72e88b79466a620873883855585f))
+* **php:** resolve PHP namespaces in PathResolver via ComposerResolver and classify vendor/ ([7d4dade](https://github.com/gh-septeo/spaghetti-compass/commit/7d4dade2109e3032e30af0f782842e8ab291b549))
+
+### 🐛 Bug Fixes
+
+* **php:** resolve getDefinitionFromImport to class/method definition instead of use statement ([34df321](https://github.com/gh-septeo/spaghetti-compass/commit/34df3214e31e536d38b5f6517c1f269f43039e0f))
+* **php:** resolve getDefinitionFromImport to class/method definition instead of use statement ([38defb2](https://github.com/gh-septeo/spaghetti-compass/commit/38defb2363fa42ae61e227b8081c95f31aa2052f))
+
+### 📚 Documentation
+
+* document PHP PSR-4 support and definition links ([56b391b](https://github.com/gh-septeo/spaghetti-compass/commit/56b391bfbf0c135d3145a7a87eca2dc8c4c27edb))
+* document PHP PSR-4 support and definition links ([ee234c4](https://github.com/gh-septeo/spaghetti-compass/commit/ee234c4b1651f413cfe9f95de56b0b787303837d))
+
 ## [1.0.1](https://github.com/gh-septeo/spaghetti-compass/compare/v1.0.0...v1.0.1) (2026-02-05)
 
 ### 🐛 Bug Fixes
