@@ -6,6 +6,7 @@ import * as path from 'node:path';
 import * as fs from 'node:fs';
 import type { NodeLocation, ContextInfo } from '../types/index.js';
 import { TsConfigResolver } from './tsconfig.js';
+import { ComposerResolver } from './composer.js';
 
 /**
  * Résout les chemins de modules et classifie leur localisation
@@ -14,12 +15,14 @@ export class PathResolver {
   private context: ContextInfo;
   private resolvedCache: Map<string, string | null> = new Map();
   private tsConfigResolver: TsConfigResolver | null = null;
+  private composerResolver: ComposerResolver;
 
   constructor(context: ContextInfo) {
     this.context = context;
     if (context.tsConfigPath) {
       this.tsConfigResolver = new TsConfigResolver(context.tsConfigPath);
     }
+    this.composerResolver = new ComposerResolver();
   }
 
   /**
@@ -88,6 +91,13 @@ export class PathResolver {
     // Gérer les chemins relatifs PHP avec __DIR__ (/../path/to/file.php)
     if (this.isPhpRelativePath(moduleSpecifier)) {
       resolved = this.resolvePhpRelativePath(moduleSpecifier, fromFile);
+      this.resolvedCache.set(cacheKey, resolved);
+      return resolved;
+    }
+
+    // Gérer les namespaces PHP (App\Models\User, etc.)
+    if (this.isPhpNamespace(moduleSpecifier)) {
+      resolved = this.resolvePhpNamespace(moduleSpecifier, fromFile);
       this.resolvedCache.set(cacheKey, resolved);
       return resolved;
     }
@@ -216,6 +226,23 @@ export class PathResolver {
   }
 
   /**
+   * Vérifie si un specifier est un namespace PHP
+   * Exemples: App\Models\User, Symfony\Component\HttpFoundation\Response
+   */
+  private isPhpNamespace(moduleSpecifier: string): boolean {
+    return ComposerResolver.isPhpNamespace(moduleSpecifier);
+  }
+
+  /**
+   * Résout un namespace PHP vers un chemin de fichier via composer.json PSR-4
+   * App\Models\User -> /path/to/src/Models/User.php
+   */
+  private resolvePhpNamespace(moduleSpecifier: string, fromFile: string): string | null {
+    const resolution = this.composerResolver.resolve(moduleSpecifier, fromFile);
+    return resolution.filePath;
+  }
+
+  /**
    * Génère les candidats de résolution pour un module
    */
   private getResolutionCandidates(moduleSpecifier: string, fromDir: string): string[] {
@@ -278,6 +305,12 @@ export class PathResolver {
 
     // Dans node_modules -> third-party
     if (normalizedResolved.includes('node_modules')) {
+      return 'third-party';
+    }
+
+    // Dans vendor/ (PHP Composer) -> third-party
+    if (normalizedResolved.includes(path.sep + 'vendor' + path.sep) ||
+        normalizedResolved.includes('/vendor/')) {
       return 'third-party';
     }
 
