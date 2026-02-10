@@ -89,6 +89,8 @@ export interface GraphEdge {
   aliasInfo?: AliasInfo;
   /** Classification de l'appel (pour type 'call') */
   callType?: CallType;
+  /** Méthode de résolution utilisée (pour debugging) */
+  resolvedVia?: 'composer-psr4' | 'lsp' | 'require-path' | 'tsconfig';
 }
 
 /**
@@ -291,4 +293,44 @@ export interface FunctionCallInfo {
   isThisCall?: boolean;
   /** Nom de l'objet sur lequel la méthode est appelée (ex: "user" pour $user->method) */
   objectName?: string;
+}
+
+/**
+ * Configuration Composer extraite de composer.json
+ */
+export interface ComposerConfig {
+  /** Chemin absolu vers composer.json */
+  configPath: string;
+  /** Mappings PSR-4: namespace prefix → base directory */
+  psr4Mappings: Map<string, string>;
+  /** Chemin du répertoire vendor */
+  vendorDir: string;
+}
+
+/**
+ * Un mapping individuel PSR-4
+ */
+export interface Psr4Mapping {
+  /** Préfixe de namespace (ex: "App\\") */
+  prefix: string;
+  /** Répertoire de base relatif à composer.json (ex: "src/") */
+  baseDir: string;
+  /** Chemin absolu résolu */
+  absoluteBaseDir: string;
+}
+
+/**
+ * Résultat de la résolution d'un namespace PHP
+ */
+export interface PhpNamespaceResolution {
+  /** Namespace complet (ex: "App\\Models\\User") */
+  namespace: string;
+  /** Chemin du fichier résolu (ou null si non résolu) */
+  filePath: string | null;
+  /** Méthode de résolution utilisée */
+  resolvedVia: 'composer-psr4' | 'lsp' | 'unresolved';
+  /** Classification de la location */
+  location: 'internal' | 'third-party' | 'unresolved';
+  /** Mapping PSR-4 utilisé (si applicable) */
+  matchedMapping?: Psr4Mapping;
 }
