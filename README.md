@@ -121,29 +121,30 @@ fixtures/python/app/main.py:1:1
 ### PHP
 
 ```bash
-# Explore file dependencies (resolves require_once __DIR__ paths)
+# Explore file dependencies (resolves PSR-4 namespaces via composer.json)
 spaghetti-compass explore fixtures/php/src/Services/AuthService.php
 
 # Explore a specific method - resolves $this->method and $obj->method calls
 spaghetti-compass explore fixtures/php/src/Services/AuthService.php:login
+
+# PSR-4 project example (Symfony/Laravel style)
+spaghetti-compass explore tests/fixtures/php-psr4/src/Services/UserService.php
 ```
 
-Output:
+Output (PSR-4 project):
 ```
 ═════════════════════════════════════════════════════════════════
- 📍 Entry Point: fixtures/php/src/Services/AuthService.php:1:1
+ 📍 Entry Point: tests/fixtures/php-psr4/src/Services/UserService.php:1:1
  📁 Context: /home/user/project
- 📊 Stats: 7 internal, 0 external, 0 third-party, 0 unresolved
+ 📊 Stats: 2 internal, 0 external, 0 third-party, 0 unresolved
 ═════════════════════════════════════════════════════════════════
 
-fixtures/php/src/Services/AuthService.php:1:1
+tests/fixtures/php-psr4/src/Services/UserService.php:1:1
 ├── 📥 IMPORTS (internal)
-│   ├── fixtures/php/src/Services/AuthService.php:112:1 (findUserByEmail)
-│   ├── fixtures/php/src/Models/User.php:68:1 (verifyPassword)
-│   ├── fixtures/php/src/Services/AuthService.php:122:1 (generateToken)
-│   ├── fixtures/php/src/Models/User.php:38:1 (getId)
-│   └── fixtures/php/src/Models/User.php:63:1 (setLastLogin)
+│   └── tests/fixtures/php-psr4/src/Models/User.php:10:1
 ```
+
+The link points to line 10 where `class User` is defined, not to the `use` statement line.
 
 ## Usage
 
@@ -253,7 +254,26 @@ When hyperlinks are enabled, file paths become clickable links using the OSC 8 e
 |----------|----------------|-------------------|----------------|
 | TypeScript | `.ts`, `.tsx`, `.js`, `.jsx` | ✅ Full (ESM, CJS, aliases) | ✅ LSP-based |
 | Python | `.py`, `.pyi` | ✅ Relative imports (`.module`) | ⚠️ Basic |
-| PHP | `.php` | ✅ `require_once __DIR__` | ✅ Method calls |
+| PHP | `.php` | ✅ PSR-4 namespaces + `require_once` | ✅ Method calls |
+
+### PHP PSR-4 Support
+
+Spaghetti Compass automatically resolves PHP namespaces using PSR-4 autoloading configuration from `composer.json`:
+
+```bash
+# Explore a Symfony/Laravel service
+spaghetti-compass explore src/Services/UserService.php
+
+# Links point to class definitions, not use statements
+# e.g., "use App\Models\User;" → src/Models/User.php:10 (class User line)
+```
+
+**Features:**
+- Automatic `composer.json` detection (searches up the directory tree)
+- PSR-4 namespace resolution (`App\Models\User` → `src/Models/User.php`)
+- Vendor packages classified as "third-party"
+- Fallback to Intelephense LSP for complex cases
+- Works without LSP (graceful degradation)
 
 ## Exit Codes
 
