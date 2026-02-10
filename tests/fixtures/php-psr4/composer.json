@@ -1,0 +1,10 @@
+{
+  "name": "test/php-psr4-fixture",
+  "description": "Test fixture for PSR-4 namespace resolution",
+  "autoload": {
+    "psr-4": {
+      "App\\": "src/",
+      "App\\Tests\\": "tests/"
+    }
+  }
+}
