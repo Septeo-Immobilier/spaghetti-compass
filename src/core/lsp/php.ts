@@ -8,6 +8,7 @@ import { execSync } from 'node:child_process';
 import type { LspProvider, DefinitionResult } from './types.js';
 import { LspProcessManager } from './process-manager.js';
 import { uriToPath, type LspLocation } from './json-rpc.js';
+import { ComposerResolver } from '../composer.js';
 
 /**
  * Provider LSP pour PHP utilisant Intelephense
@@ -21,21 +22,17 @@ export class PhpLspProvider implements LspProvider {
   private processKey: string = '';
   private files: Map<string, string> = new Map();
   private debug: boolean;
+  private composerResolver: ComposerResolver;
 
   constructor(debug: boolean = false) {
     this.debug = debug;
     this.processManager = new LspProcessManager({ debug });
+    this.composerResolver = new ComposerResolver();
   }
 
   async isAvailable(): Promise<boolean> {
     try {
-      // Vérifier si intelephense est installé localement dans node_modules
-      const localPath = path.join(process.cwd(), 'node_modules', '.bin', 'intelephense');
-      if (fs.existsSync(localPath)) {
-        return true;
-      }
-
-      // Essayer avec which/where pour une installation globale
+      // Vérifier si intelephense est installé globalement
       execSync(process.platform === 'win32' ? 'where intelephense' : 'which intelephense', {
         stdio: 'pipe',
       });
@@ -56,14 +53,10 @@ export class PhpLspProvider implements LspProvider {
   }
 
   private async ensureProcess(): Promise<boolean> {
-    // Utiliser le chemin local si disponible, sinon npx
-    const localPath = path.join(this.projectRoot, 'node_modules', '.bin', 'intelephense');
-    const useLocal = fs.existsSync(localPath);
-    
     const process = await this.processManager.getOrCreateProcess(
       this.processKey,
-      useLocal ? localPath : 'npx',
-      useLocal ? ['--stdio'] : ['intelephense', '--stdio'],
+      'intelephense',
+      ['--stdio'],
       this.projectRoot
     );
     return process !== null;
@@ -169,11 +162,69 @@ export class PhpLspProvider implements LspProvider {
   async getDefinitionFromImport(
     sourceFilePath: string,
     symbolName: string,
-    _moduleSpecifier: string
+    moduleSpecifier: string
   ): Promise<DefinitionResult | null> {
-    // En PHP, les imports sont généralement des "use" statements
-    // On utilise getDefinitionByName qui gère déjà les use statements
+    // Pour les namespaces PHP, on résout d'abord via Composer PSR-4
+    // puis on cherche la définition dans le fichier cible (pas le fichier source!)
+    
+    // Essayer de résoudre le namespace via Composer
+    if (ComposerResolver.isPhpNamespace(moduleSpecifier)) {
+      const resolution = this.composerResolver.resolve(moduleSpecifier, sourceFilePath);
+      
+      if (resolution.filePath && fs.existsSync(resolution.filePath)) {
+        // Charger le fichier cible
+        this.addFile(resolution.filePath);
+        
+        // Chercher la définition de la classe/interface dans le fichier cible
+        const targetContent = this.files.get(resolution.filePath);
+        if (targetContent) {
+          // Chercher la ligne de définition de la classe
+          const classDefLine = this.findClassDefinitionLine(targetContent, symbolName);
+          if (classDefLine !== null) {
+            return {
+              filePath: resolution.filePath,
+              line: classDefLine,
+              column: 1,
+            };
+          }
+        }
+        
+        // Fallback: utiliser le LSP sur le fichier cible
+        const lspResult = await this.getDefinitionByName(resolution.filePath, symbolName);
+        if (lspResult) {
+          return lspResult;
+        }
+      }
+    }
+    
+    // Fallback: chercher dans le fichier source (comportement original)
     return this.getDefinitionByName(sourceFilePath, symbolName);
+  }
+
+  /**
+   * Trouve la ligne de définition d'une classe/interface/trait dans le contenu d'un fichier
+   */
+  private findClassDefinitionLine(content: string, className: string): number | null {
+    const lines = content.split('\n');
+    
+    // Patterns pour trouver la définition de classe/interface/trait
+    const patterns = [
+      new RegExp(`^\\s*(?:abstract\\s+)?(?:final\\s+)?class\\s+${this.escapeRegex(className)}\\b`),
+      new RegExp(`^\\s*interface\\s+${this.escapeRegex(className)}\\b`),
+      new RegExp(`^\\s*trait\\s+${this.escapeRegex(className)}\\b`),
+      new RegExp(`^\\s*enum\\s+${this.escapeRegex(className)}\\b`),
+    ];
+    
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      for (const pattern of patterns) {
+        if (pattern.test(line)) {
+          return i + 1; // 1-indexed
+        }
+      }
+    }
+    
+    return null;
   }
 
   async dispose(): Promise<void> {
