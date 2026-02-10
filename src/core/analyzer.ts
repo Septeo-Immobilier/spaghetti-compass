@@ -3,6 +3,7 @@
  */
 
 import * as path from 'node:path';
+import * as fs from 'node:fs';
 import type {
   ContextInfo,
   DependencyGraph,
@@ -17,6 +18,7 @@ import { PathResolver } from './resolver.js';
 import { ParserFactory } from '../parser/index.js';
 import { TsConfigResolver } from './tsconfig.js';
 import { LspProviderFactory, type LspProvider } from './lsp/index.js';
+import { ComposerResolver } from './composer.js';
 import type { ParseResult } from '../types/index.js';
 
 /**
@@ -53,6 +55,8 @@ export class Analyzer {
   private visitedFunctions: Set<string> = new Set();
   /** Options d'analyse courantes */
   private currentOptions: AnalyzerOptions = {};
+  /** ComposerResolver pour résolution PHP PSR-4 sans LSP */
+  private composerResolver: ComposerResolver = new ComposerResolver();
 
   constructor(context: ContextInfo) {
     // Découvrir automatiquement tsconfig et package.json si non fournis
@@ -412,6 +416,46 @@ export class Analyzer {
   }
 
   /**
+   * Trouve la ligne de définition d'un symbole PHP dans un fichier.
+   * Cherche d'abord une méthode, puis une classe/interface/trait/enum.
+   */
+  private findPhpDefinitionLine(filePath: string, symbolName: string): number | null {
+    try {
+      const content = fs.readFileSync(filePath, 'utf-8');
+      const lines = content.split('\n');
+      const escapedName = symbolName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+      // 1. Chercher une méthode (function methodName)
+      const methodPattern = new RegExp(
+        `^\\s*(?:public|private|protected)\\s+(?:static\\s+)?function\\s+${escapedName}\\s*\\(`
+      );
+      for (let i = 0; i < lines.length; i++) {
+        if (methodPattern.test(lines[i])) {
+          return i + 1;
+        }
+      }
+
+      // 2. Chercher une classe/interface/trait/enum
+      const classPatterns = [
+        new RegExp(`^\\s*(?:abstract\\s+)?(?:final\\s+)?(?:readonly\\s+)?class\\s+${escapedName}\\b`),
+        new RegExp(`^\\s*interface\\s+${escapedName}\\b`),
+        new RegExp(`^\\s*trait\\s+${escapedName}\\b`),
+        new RegExp(`^\\s*enum\\s+${escapedName}\\b`),
+      ];
+      for (let i = 0; i < lines.length; i++) {
+        for (const pattern of classPatterns) {
+          if (pattern.test(lines[i])) {
+            return i + 1;
+          }
+        }
+      }
+    } catch {
+      // Fichier illisible
+    }
+    return null;
+  }
+
+  /**
    * Trouve une méthode interne dans le même fichier (pour résolution sans LSP)
    * Cherche les méthodes de la même classe (ex: AuthService.findUserByEmail pour AuthService.login)
    */
@@ -650,15 +694,36 @@ export class Analyzer {
           call.name,
           call.fromModule || ''
         );
-      } else {
-        // Sans LSP, essayer de résoudre via le parser (méthodes internes)
-        const internalMethod = this.findInternalMethod(call.name, fullFunctionName, parseResult);
-        if (internalMethod) {
-          definition = {
-            filePath: filePath,
-            line: internalMethod.line,
-            column: 1,
-          };
+      }
+
+      // Fallback sans LSP ou si LSP n'a rien trouvé
+      if (!definition) {
+        // Si fromModule est un namespace PHP, résoudre via Composer PSR-4
+        if (call.fromModule && ComposerResolver.isPhpNamespace(call.fromModule)) {
+          const resolution = this.composerResolver.resolve(call.fromModule, filePath);
+          if (resolution.filePath) {
+            // Chercher la méthode dans le fichier, sinon la classe
+            const defLine = this.findPhpDefinitionLine(resolution.filePath, call.name);
+            if (defLine) {
+              definition = {
+                filePath: resolution.filePath,
+                line: defLine,
+                column: 1,
+              };
+            }
+          }
+        }
+
+        // Sinon, essayer de résoudre via le parser (méthodes internes)
+        if (!definition) {
+          const internalMethod = this.findInternalMethod(call.name, fullFunctionName, parseResult);
+          if (internalMethod) {
+            definition = {
+              filePath: filePath,
+              line: internalMethod.line,
+              column: 1,
+            };
+          }
         }
       }
 
