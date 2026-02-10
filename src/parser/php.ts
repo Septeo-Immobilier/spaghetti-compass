@@ -174,6 +174,35 @@ export class PhpParser implements Parser {
   }
 
   /**
+   * Extrait les types des propriétés de classe depuis le contenu du fichier.
+   * Gère les promoted properties du constructeur et les déclarations de propriétés.
+   * @returns Map<propertyName, TypeName> ex: { "repository" => "CompanyRepository" }
+   */
+  private extractPropertyTypes(content: string): Map<string, string> {
+    const propertyTypes = new Map<string, string>();
+    const lines = content.split('\n');
+
+    for (const line of lines) {
+      // Promoted constructor properties:
+      // private readonly CompanyRepository $repository,
+      // private PaginationService $paginationService,
+      const promotedMatch = line.match(
+        /(?:private|protected|public)\s+(?:readonly\s+)?(\w+)\s+\$(\w+)/
+      );
+      if (promotedMatch) {
+        const typeName = promotedMatch[1];
+        const propName = promotedMatch[2];
+        // Ignorer les types scalaires
+        if (/^[A-Z]/.test(typeName)) {
+          propertyTypes.set(propName, typeName);
+        }
+      }
+    }
+
+    return propertyTypes;
+  }
+
+  /**
    * Extrait les fonctions PHP
    */
   private extractFunctions(content: string): FunctionInfo[] {
@@ -188,6 +217,9 @@ export class PhpParser implements Parser {
         importMap.set(name, imp.moduleSpecifier);
       }
     }
+
+    // Extraire les types des propriétés de classe pour résoudre $this->property->method()
+    const propertyTypeMap = this.extractPropertyTypes(content);
 
     let currentClass: string | null = null;
     let pendingClass: string | null = null; // Classe détectée mais pas encore d'accolade
@@ -256,7 +288,7 @@ export class PhpParser implements Parser {
       // Fin de fonction - quand on revient au niveau avant l'accolade ouvrante
       if (functionStart !== -1 && braceDepth < functionBraceStart) {
         const functionContent = lines.slice(functionStart, i + 1).join('\n');
-        const calls = this.extractFunctionCalls(functionContent, importMap, functionName);
+        const calls = this.extractFunctionCalls(functionContent, importMap, functionName, propertyTypeMap);
 
         functions.push({
           name: functionName,
@@ -284,7 +316,7 @@ export class PhpParser implements Parser {
    * Extrait les appels de fonction dans un bloc de code
    * Détecte aussi les callbacks (array_map, array_filter, usort, etc.)
    */
-  private extractFunctionCalls(content: string, importMap: Map<string, string>, currentFunctionName?: string): FunctionCallInfo[] {
+  private extractFunctionCalls(content: string, importMap: Map<string, string>, currentFunctionName?: string, propertyTypeMap?: Map<string, string>): FunctionCallInfo[] {
     const calls: FunctionCallInfo[] = [];
     const seen = new Set<string>();
     const lines = content.split('\n');
@@ -459,11 +491,46 @@ export class PhpParser implements Parser {
         }
       }
 
+      // Appels chaînés sur propriétés: $this->property->method(
+      // Ex: $this->repository->findByFilters($dto) où repository est de type CompanyRepository
+      if (propertyTypeMap) {
+        const chainedMatches = line.matchAll(/\$this->(\w+)->(\w+)\s*\(/g);
+        for (const match of chainedMatches) {
+          const propertyName = match[1];
+          const methodName = match[2];
+          const typeName = propertyTypeMap.get(propertyName);
+          if (typeName) {
+            const callKey = `${typeName}.${methodName}`;
+            if (!seen.has(callKey)) {
+              seen.add(callKey);
+              // Chercher le namespace complet du type via importMap
+              const fromModule = importMap.get(typeName);
+              calls.push({
+                name: methodName,
+                line: i + 1,
+                fromModule,
+                isThisCall: false,
+                objectName: typeName,
+              });
+            }
+          }
+        }
+      }
+
       // Appels de méthode: $obj->method( ou $this->method(
       const methodMatches = line.matchAll(/\$(\w+)->(\w+)\s*\(/g);
       for (const match of methodMatches) {
         const objName = match[1];
         const methodName = match[2];
+
+        // Ignorer les appels chaînés déjà traités ($this->property->method)
+        if (objName === 'this' && propertyTypeMap?.has(methodName)) {
+          // Vérifier si c'est réellement un appel chaîné sur cette ligne
+          const chainedPattern = new RegExp(`\\$this->${methodName}->\\w+\\s*\\(`);
+          if (chainedPattern.test(line)) {
+            continue; // Déjà traité par le bloc chaîné ci-dessus
+          }
+        }
 
         // Ignorer $this->currentMethod (appel récursif)
         if (objName === 'this' && methodName === currentSimpleName) {
