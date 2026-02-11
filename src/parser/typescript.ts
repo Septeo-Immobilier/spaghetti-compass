@@ -195,11 +195,21 @@ export class TypeScriptParser implements Parser {
         }
       }
 
-      // Methods in classes
+      // Classes: constructor (point d'entrée "ClassName") et méthodes
       if (ts.isClassDeclaration(node)) {
+        const className = node.name?.text || 'anonymous';
         for (const member of node.members) {
-          if (ts.isMethodDeclaration(member) && member.name && ts.isIdentifier(member.name)) {
-            const className = node.name?.text || 'anonymous';
+          if (ts.isConstructorDeclaration(member)) {
+            const constructorInfo = this.createConstructorInfo(
+              member,
+              className,
+              sourceFile,
+              importedNames
+            );
+            if (constructorInfo) {
+              functions.push(constructorInfo);
+            }
+          } else if (ts.isMethodDeclaration(member) && member.name && ts.isIdentifier(member.name)) {
             const funcInfo = this.createMethodInfo(
               member,
               className,
@@ -262,6 +272,28 @@ export class TypeScriptParser implements Parser {
       name: declaration.name.text,
       line: sourceFile.getLineAndCharacterOfPosition(declaration.getStart()).line + 1,
       exported: this.hasExportModifier(statement),
+      calls,
+    };
+  }
+
+  /**
+   * Crée un FunctionInfo pour le constructeur d'une classe.
+   * Permet d'explorer "file.ts:ClassName" en pointant vers le constructor.
+   */
+  private createConstructorInfo(
+    node: ts.ConstructorDeclaration,
+    className: string,
+    sourceFile: ts.SourceFile,
+    importedNames: Map<string, string>
+  ): FunctionInfo | null {
+    const calls: FunctionCallInfo[] = node.body
+      ? extractFunctionCalls(node.body, sourceFile, importedNames)
+      : [];
+
+    return {
+      name: className,
+      line: sourceFile.getLineAndCharacterOfPosition(node.getStart()).line + 1,
+      exported: false,
       calls,
     };
   }

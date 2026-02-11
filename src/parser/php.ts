@@ -297,6 +297,20 @@ export class PhpParser implements Parser {
           calls,
         });
 
+        // Exposer aussi la classe comme point d'entrée (file.php:ClassName) en dupliquant le constructeur
+        const rawName = currentClass ? functionName.split('.').pop()! : functionName;
+        const isConstructor =
+          currentClass !== null &&
+          (rawName === '__construct' || rawName === currentClass);
+        if (isConstructor && currentClass !== null) {
+          functions.push({
+            name: currentClass,
+            line: functionStart + 1,
+            exported: true,
+            calls,
+          });
+        }
+
         functionStart = -1;
         functionName = '';
         functionBraceStart = 0;

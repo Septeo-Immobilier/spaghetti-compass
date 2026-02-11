@@ -273,8 +273,39 @@ export function extractFunctionCalls(
     ts.forEachChild(node, collectFunctionVariables);
   }
 
-  // Deuxième passe : collecter les appels
+  // Deuxième passe : collecter les appels (y compris new ClassName() → cible le constructeur)
   function visit(node: ts.Node): void {
+    // new ClassName() : traiter comme un appel vers le constructeur de la classe
+    if (ts.isNewExpression(node)) {
+      let callName: string | undefined;
+      let fromModule: string | undefined;
+      if (ts.isIdentifier(node.expression)) {
+        callName = node.expression.text;
+        fromModule = importedNames.get(callName);
+      } else if (ts.isPropertyAccessExpression(node.expression)) {
+        const methodName = node.expression.name.text;
+        if (ts.isIdentifier(node.expression.expression)) {
+          const objName = node.expression.expression.text;
+          callName = `${objName}.${methodName}`;
+          fromModule = importedNames.get(objName);
+        }
+      }
+      if (callName) {
+        const key = `new:${callName}:${fromModule || ''}`;
+        if (!seen.has(key)) {
+          seen.add(key);
+          calls.push({
+            name: callName,
+            line: sourceFile.getLineAndCharacterOfPosition(node.getStart()).line + 1,
+            fromModule,
+            isThisCall: false,
+          });
+        }
+      }
+      ts.forEachChild(node, visit);
+      return;
+    }
+
     if (ts.isCallExpression(node)) {
       let callName: string | undefined;
       let fromModule: string | undefined;
