@@ -1,3 +1,14 @@
+## [1.2.0](https://github.com/gh-septeo/spaghetti-compass/compare/v1.1.0...v1.2.0) (2026-02-11)
+
+### ✨ Features
+
+* **lsp:** target class constructor in definition resolution ([984f20e](https://github.com/gh-septeo/spaghetti-compass/commit/984f20e45ff1b6ad76ecc994e197dbc30547348d))
+* **parser:** expose class as entry point and extract new Class() calls ([d35d810](https://github.com/gh-septeo/spaghetti-compass/commit/d35d810051dd039ab40d009fe2fbcb329597dc05))
+
+### 📚 Documentation
+
+* **spec:** add spec 002 class constructor targeting ([abbb6a3](https://github.com/gh-septeo/spaghetti-compass/commit/abbb6a3ca5fd9f6cfdc7f5cb260c9544d5dfb527))
+
 ## [1.1.0](https://github.com/gh-septeo/spaghetti-compass/compare/v1.0.1...v1.1.0) (2026-02-10)
 
 ### ✨ Features
