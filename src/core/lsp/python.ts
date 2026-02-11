@@ -122,7 +122,54 @@ export class PythonLspProvider implements LspProvider {
       character
     );
 
-    return this.locationToDefinitionResult(result);
+    const defResult = this.locationToDefinitionResult(result);
+    return defResult ? this.redirectClassToInit(defResult) ?? defResult : null;
+  }
+
+  /**
+   * Si la définition pointe vers une ligne "class X", renvoie le résultat
+   * avec line/column pointant vers "def __init__" si présent ; sinon null.
+   */
+  private redirectClassToInit(
+    result: DefinitionResult
+  ): DefinitionResult | null {
+    const content = this.files.get(path.resolve(result.filePath));
+    if (!content) return null;
+    const initLine = this.findConstructorLineInClass(content, result.line);
+    if (initLine === null) return null;
+    const lines = content.split('\n');
+    const lineContent = lines[initLine - 1];
+    const column = (lineContent.match(/^\s*/)?.[0]?.length ?? 0) + 1;
+    return { ...result, line: initLine, column };
+  }
+
+  /**
+   * Trouve la ligne de "def __init__" dans la classe dont la déclaration est à classDeclarationLine.
+   * @returns Ligne 1-indexed ou null
+   */
+  private findConstructorLineInClass(
+    content: string,
+    classDeclarationLine: number
+  ): number | null {
+    const lines = content.split('\n');
+    const lineIndex = classDeclarationLine - 1;
+    if (lineIndex < 0 || lineIndex >= lines.length) return null;
+    const classLine = lines[lineIndex];
+    const classMatch = classLine.match(/^(\s*)class\s+\w+/);
+    if (!classMatch) return null;
+    const classIndent = classMatch[1].length;
+    const initPattern = /^(\s*)def\s+__init__\s*\(/;
+    for (let i = lineIndex + 1; i < lines.length; i++) {
+      const line = lines[i];
+      const indent = line.match(/^\s*/)?.[0]?.length ?? 0;
+      if (indent <= classIndent && line.trim().length > 0) {
+        break;
+      }
+      if (initPattern.test(line)) {
+        return i + 1;
+      }
+    }
+    return null;
   }
 
   async getDefinitionByName(

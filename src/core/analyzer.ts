@@ -19,6 +19,7 @@ import { ParserFactory } from '../parser/index.js';
 import { TsConfigResolver } from './tsconfig.js';
 import { LspProviderFactory, type LspProvider } from './lsp/index.js';
 import { ComposerResolver } from './composer.js';
+import { findPhpConstructorLine } from './lsp/php-constructor.js';
 import type { ParseResult } from '../types/index.js';
 
 /**
@@ -436,14 +437,20 @@ export class Analyzer {
       }
 
       // 2. Chercher une classe/interface/trait/enum
-      const classPatterns = [
-        new RegExp(`^\\s*(?:abstract\\s+)?(?:final\\s+)?(?:readonly\\s+)?class\\s+${escapedName}\\b`),
+      const classOnlyPattern = new RegExp(
+        `^\\s*(?:abstract\\s+)?(?:final\\s+)?(?:readonly\\s+)?class\\s+${escapedName}\\b`
+      );
+      const otherKindPatterns = [
         new RegExp(`^\\s*interface\\s+${escapedName}\\b`),
         new RegExp(`^\\s*trait\\s+${escapedName}\\b`),
         new RegExp(`^\\s*enum\\s+${escapedName}\\b`),
       ];
       for (let i = 0; i < lines.length; i++) {
-        for (const pattern of classPatterns) {
+        if (classOnlyPattern.test(lines[i])) {
+          const constructorLine = findPhpConstructorLine(content, symbolName);
+          return constructorLine ?? i + 1;
+        }
+        for (const pattern of otherKindPatterns) {
           if (pattern.test(lines[i])) {
             return i + 1;
           }

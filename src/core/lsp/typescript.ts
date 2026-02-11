@@ -142,12 +142,13 @@ export class TypeScriptLspProvider implements LspProvider {
       const { line, character } =
         sourceFile.getLineAndCharacterOfPosition(def.textSpan.start);
 
-      return {
+      const result: DefinitionResult = {
         filePath: def.fileName,
         line: line + 1, // 1-indexed
         column: character + 1, // 1-indexed
         name: def.name,
       };
+      return this.redirectClassToConstructor(result) ?? result;
     } catch {
       return null;
     }
@@ -211,6 +212,78 @@ export class TypeScriptLspProvider implements LspProvider {
       }
     }
 
+    return null;
+  }
+
+  /**
+   * Si la définition pointe vers une déclaration de classe, renvoie le même
+   * résultat avec line/column pointant vers le constructor ; sinon renvoie null (garder résultat inchangé).
+   */
+  private redirectClassToConstructor(
+    result: DefinitionResult
+  ): DefinitionResult | null {
+    if (!this.languageService) return null;
+    const program = this.languageService.getProgram();
+    if (!program) return null;
+    const sourceFile = program.getSourceFile(result.filePath);
+    if (!sourceFile) return null;
+
+    const lineStarts = sourceFile.getLineStarts();
+    const lineIndex = result.line - 1;
+    if (lineIndex < 0 || lineIndex >= lineStarts.length) return null;
+    const position =
+      lineStarts[lineIndex] + (result.column - 1);
+
+    const node = this.findNodeAtPosition(sourceFile, position);
+    if (!node) return null;
+
+    const classDecl = this.getContainingClassDeclaration(node);
+    if (!classDecl) return null;
+
+    const ctor = classDecl.members.find(
+      (m): m is ts.ConstructorDeclaration =>
+        ts.isConstructorDeclaration(m)
+    );
+    if (!ctor) return null;
+
+    const { line, character } =
+      sourceFile.getLineAndCharacterOfPosition(ctor.getStart());
+    return {
+      ...result,
+      line: line + 1,
+      column: character + 1,
+    };
+  }
+
+  private findNodeAtPosition(
+    sourceFile: ts.SourceFile,
+    position: number
+  ): ts.Node | null {
+    const visit = (node: ts.Node): ts.Node | null => {
+      if (node.getStart() <= position && position <= node.getEnd()) {
+        let deeper: ts.Node | null = null;
+        ts.forEachChild(node, (child) => {
+          if (child.getStart() <= position && position <= child.getEnd()) {
+            deeper = visit(child);
+            return deeper;
+          }
+          return undefined;
+        });
+        return deeper ?? node;
+      }
+      return null;
+    };
+    return visit(sourceFile) ?? null;
+  }
+
+  private getContainingClassDeclaration(
+    node: ts.Node
+  ): ts.ClassDeclaration | null {
+    let current: ts.Node | undefined = node;
+    while (current) {
+      if (ts.isClassDeclaration(current)) return current;
+      current = current.parent;
+    }
     return null;
   }
 

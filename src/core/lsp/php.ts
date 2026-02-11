@@ -9,6 +9,7 @@ import type { LspProvider, DefinitionResult } from './types.js';
 import { LspProcessManager } from './process-manager.js';
 import { uriToPath, type LspLocation } from './json-rpc.js';
 import { ComposerResolver } from '../composer.js';
+import { findPhpConstructorLine } from './php-constructor.js';
 
 /**
  * Provider LSP pour PHP utilisant Intelephense
@@ -178,12 +179,13 @@ export class PhpLspProvider implements LspProvider {
         // Chercher la définition de la classe/interface dans le fichier cible
         const targetContent = this.files.get(resolution.filePath);
         if (targetContent) {
-          // Chercher la ligne de définition de la classe
           const classDefLine = this.findClassDefinitionLine(targetContent, symbolName);
           if (classDefLine !== null) {
+            const constructorLine = findPhpConstructorLine(targetContent, symbolName);
+            const line = constructorLine ?? classDefLine;
             return {
               filePath: resolution.filePath,
-              line: classDefLine,
+              line,
               column: 1,
             };
           }
@@ -206,7 +208,7 @@ export class PhpLspProvider implements LspProvider {
    */
   private findClassDefinitionLine(content: string, className: string): number | null {
     const lines = content.split('\n');
-    
+
     // Patterns pour trouver la définition de classe/interface/trait
     const patterns = [
       new RegExp(`^\\s*(?:abstract\\s+)?(?:final\\s+)?class\\s+${this.escapeRegex(className)}\\b`),
@@ -214,7 +216,7 @@ export class PhpLspProvider implements LspProvider {
       new RegExp(`^\\s*trait\\s+${this.escapeRegex(className)}\\b`),
       new RegExp(`^\\s*enum\\s+${this.escapeRegex(className)}\\b`),
     ];
-    
+
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
       for (const pattern of patterns) {
@@ -223,7 +225,7 @@ export class PhpLspProvider implements LspProvider {
         }
       }
     }
-    
+
     return null;
   }
 
