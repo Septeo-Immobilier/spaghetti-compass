@@ -11,6 +11,8 @@ import { Analyzer } from '../core/analyzer.js';
 import { formatText } from '../output/text.js';
 import { formatJson } from '../output/json.js';
 import { TsConfigResolver } from '../core/tsconfig.js';
+import { runAgentSetup } from './agent-setup/index.js';
+import { getSupportedWorkflowIds } from './agent-setup/workflows.js';
 
 // Exit codes
 const EXIT_SUCCESS = 0;
@@ -257,6 +259,17 @@ program
       console.error(`Error: ${error instanceof Error ? error.message : String(error)}`);
       process.exit(EXIT_PARSE_ERROR);
     }
+  });
+
+program
+  .command('agent-setup')
+  .description('Configure the project for an AI agent workflow (rules, commands, skills). Idempotent: re-run overwrites managed files.')
+  .argument('[path]', 'Target directory (default: current directory)', '.')
+  .option('-w, --workflow <id>', `Workflow id (default: cursor). Supported: ${getSupportedWorkflowIds().join(', ')}`, 'cursor')
+  .option('-p, --path <dir>', 'Target directory (overrides [path] argument)')
+  .action((pathArg: string, options: { workflow: string; path?: string }) => {
+    const targetPath = options.path ?? pathArg;
+    runAgentSetup(targetPath, options.workflow);
   });
 
 // Parser les arguments

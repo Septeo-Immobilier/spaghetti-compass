@@ -233,6 +233,30 @@ spaghetti-compass explore src/main.ts -c src/ --hyperlinks
 
 When hyperlinks are enabled, file paths become clickable links using the OSC 8 escape sequence. This works in terminals that support OSC 8 hyperlinks (iTerm2, Windows Terminal, some Linux terminals).
 
+## Agent setup
+
+Configure your project for an AI agent workflow (Cursor, etc.) in one command. Writes or overwrites rules, commands, and skills in the target directory. Idempotent: re-run to update after a package upgrade.
+
+```bash
+# Configure current directory for Cursor (default workflow)
+spaghetti-compass agent-setup --workflow cursor
+
+# Or use short options and a custom path
+spaghetti-compass agent-setup -w cursor -p ./packages/my-app
+
+# Show help and supported workflows
+spaghetti-compass agent-setup --help
+```
+
+| Option | Alias | Description | Default |
+|--------|-------|-------------|---------|
+| `--workflow <id>` | `-w` | Workflow id | `cursor` |
+| `--path <dir>` | `-p` | Target directory | current directory |
+
+**Supported workflows**: `cursor` (writes `.cursor/rules/`, `.cursor/commands/`, `.agents/skills/`).
+
+**Exit codes**: 0 success, 2 invalid path (not a directory or missing), 5 unknown workflow.
+
 ## Options
 
 | Option | Alias | Description | Default |
