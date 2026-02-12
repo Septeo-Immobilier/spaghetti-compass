@@ -1,3 +1,13 @@
+## [1.3.0](https://github.com/gh-septeo/spaghetti-compass/compare/v1.2.0...v1.3.0) (2026-02-12)
+
+### ✨ Features
+
+* **cli:** add agent-setup command and cursor workflow templates ([fabacfe](https://github.com/gh-septeo/spaghetti-compass/commit/fabacfeb1679d7c7bfd44e07045cdc375071ab2e))
+
+### 📚 Documentation
+
+* **spec:** add spec 7-agent-setup-cli artifacts ([e1fe13d](https://github.com/gh-septeo/spaghetti-compass/commit/e1fe13dd3c5f49b6cf2fb30746b768e05d21ad83))
+
 ## [1.2.0](https://github.com/gh-septeo/spaghetti-compass/compare/v1.1.0...v1.2.0) (2026-02-11)
 
 ### ✨ Features
