@@ -12,7 +12,6 @@ import { formatText } from '../output/text.js';
 import { formatJson } from '../output/json.js';
 import { TsConfigResolver } from '../core/tsconfig.js';
 import { runAgentSetup } from './agent-setup/index.js';
-import { getSupportedWorkflowIds } from './agent-setup/workflows.js';
 
 // Exit codes
 const EXIT_SUCCESS = 0;
@@ -263,13 +262,20 @@ program
 
 program
   .command('agent-setup')
-  .description('Configure the project for an AI agent workflow (rules, commands, skills). Idempotent: re-run overwrites managed files.')
+  .description('Configure the project for an AI agent by writing a skill file. Supports multiple destinations.')
   .argument('[path]', 'Target directory (default: current directory)', '.')
-  .option('-w, --workflow <id>', `Workflow id (default: cursor). Supported: ${getSupportedWorkflowIds().join(', ')}`, 'cursor')
+  .option('-d, --dest <id...>', 'Destination(s): claude, cursor, agents (repeatable)')
   .option('-p, --path <dir>', 'Target directory (overrides [path] argument)')
-  .action((pathArg: string, options: { workflow: string; path?: string }) => {
+  .action(async (pathArg: string, options: { dest?: string | string[]; path?: string }) => {
     const targetPath = options.path ?? pathArg;
-    runAgentSetup(targetPath, options.workflow);
+    let destIds: string[] | undefined;
+
+    if (options.dest) {
+      // Normalize dest to array (commander may return string or array depending on usage)
+      destIds = Array.isArray(options.dest) ? options.dest : [options.dest];
+    }
+
+    await runAgentSetup(targetPath, destIds);
   });
 
 // Parser les arguments
