@@ -8,7 +8,8 @@ This directory contains sample projects for testing spaghetti-compass across dif
 fixtures/
 ├── typescript/    # TypeScript/JavaScript project
 ├── python/        # Python project
-└── php/           # PHP project
+├── php/           # PHP project
+└── go/            # Go module
 ```
 
 ## TypeScript Fixture
@@ -43,6 +44,21 @@ spaghetti-compass explore fixtures/php/src/main.php
 
 # Analyze a specific function
 spaghetti-compass explore fixtures/php/src/Services/AuthService.php:login
+```
+
+## Go Fixture
+
+Requires: **gopls** (`go install golang.org/x/tools/gopls@latest`) — optional for parse-only mode.
+
+```bash
+# Analyze the main entry point
+spaghetti-compass explore fixtures/go/cmd/service/main.go -c fixtures/go
+
+# Analyze the Execute method on the ReceiveInvoice use case
+spaghetti-compass explore fixtures/go/internal/application/usecases/receive_invoice.go:ReceiveInvoice.Execute -c fixtures/go --json
+
+# Impact analysis from the domain entity
+spaghetti-compass impact fixtures/go/internal/domain/invoice/entity.go -c fixtures/go --json
 ```
 
 ## Testing LSP Navigation
