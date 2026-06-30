@@ -1,10 +1,10 @@
 # Spaghetti Compass 🍝🧭
 
-CLI tool to explore and visualize code dependency relations in **TypeScript**, **Python**, and **PHP** projects.
+CLI tool to explore and visualize code dependency relations in **TypeScript**, **Python**, **PHP**, and **Go** projects.
 
 ## Features
 
-- **Multi-language support**: TypeScript/JavaScript, Python, and PHP
+- **Multi-language support**: TypeScript/JavaScript, Python, PHP, and Go
 - **Explore file dependencies**: Analyze imports/exports from any entry point (forward analysis)
 - **Reverse impact analysis**: From a target file, find every file — and every route/entry point — that depends on it, to know what could break if you change it
 - **Context-aware classification**: Define a "context" folder to distinguish internal vs external dependencies
@@ -146,6 +146,35 @@ tests/fixtures/php-psr4/src/Services/UserService.php:1:1
 ```
 
 The link points to line 10 where `class User` is defined, not to the `use` statement line.
+
+### Go
+
+Internal imports are resolved through the nearest `go.mod` (module path → local package
+directory). Standard-library and external module imports are classified as third-party.
+Methods are addressed as `Type.Method`. `gopls` is used for precise navigation when
+available, with a graceful file-level fallback when it is not.
+
+```bash
+# Explore a Go file's dependencies (resolves module-qualified internal imports)
+spaghetti-compass explore fixtures/go/cmd/service/main.go -c fixtures/go
+
+# Explore a method's call graph (receiver methods use the Type.Method form)
+spaghetti-compass explore fixtures/go/internal/application/usecases/receive_invoice.go:ReceiveInvoice.Execute -c fixtures/go
+
+# JSON output
+spaghetti-compass explore fixtures/go/cmd/service/main.go -c fixtures/go --json
+
+# Reverse impact: who depends on a domain entity?
+spaghetti-compass impact fixtures/go/internal/domain/invoice/entity.go -c fixtures/go
+```
+
+Internal imports point at the package's `.go` files; stdlib (`context`, `net/http`, …) and
+external modules (`github.com/...`) are shown as third-party. `cmd/**/main.go` and `*handler.go`
+are treated as routes/entry points by default (see [`config/route-patterns.txt`](config/route-patterns.txt)).
+
+> **Optional `gopls`**: install it (`go install golang.org/x/tools/gopls@latest`) for exact
+> symbol positions in multi-file packages. Without it, analysis stays file/package-level and
+> never fails. Multi-module repos use the `go.mod` nearest the source file.
 
 ## Usage
 
@@ -296,7 +325,8 @@ add or remove naming conventions by hand — **no rebuild needed**.
 - One glob per line; blank lines ignored; anything after `#` is a comment.
 - Ships with conventions for NestJS (`*.controller.ts`), Hono/Fastify/Express (`*.routes.ts`,
   `*.handler.ts`), Next.js (`app/**/route.ts`), Nuxt (`server/api/**`), SvelteKit (`+server.ts`),
-  Python (`routers/**`, `*_router.py`) and PHP (`*Controller.php`).
+  Python (`routers/**`, `*_router.py`), PHP (`*Controller.php`) and Go (`cmd/**/main.go`,
+  `*handler.go`, `*routes.go`).
 - The `--routes` CLI flag overrides the file entirely for a one-off run.
 
 ```bash
@@ -337,7 +367,7 @@ spaghetti-compass agent-setup --help
 |--------|-------|-------------|---------|
 | `--context <dir>` | `-c` | Context directory for classification | `.` |
 | `--json` | `-j` | Output as JSON | `false` |
-| `--include <glob...>` | `-i` | Include patterns | `**/*.ts, **/*.js, **/*.py, **/*.php` |
+| `--include <glob...>` | `-i` | Include patterns | `**/*.ts, **/*.js, **/*.py, **/*.php, **/*.go` |
 | `--exclude <glob...>` | `-e` | Exclude patterns | `**/node_modules/**` |
 | `--no-transitive` | | Direct dependencies only | `false` |
 | `--absolute-paths` | | Use absolute paths instead of relative | `false` |
@@ -353,6 +383,29 @@ spaghetti-compass agent-setup --help
 | TypeScript | `.ts`, `.tsx`, `.js`, `.jsx` | ✅ Full (ESM, CJS, aliases) | ✅ LSP-based |
 | Python | `.py`, `.pyi` | ✅ Relative imports (`.module`) | ⚠️ Basic |
 | PHP | `.php` | ✅ PSR-4 namespaces + `require_once` | ✅ Method calls |
+| Go | `.go` | ✅ `go.mod` module paths (stdlib/external → third-party) | ✅ Functions & `Type.Method` (gopls optional) |
+
+### Go Support
+
+Spaghetti Compass resolves Go internal imports through the nearest `go.mod`, mapping the
+module path to local package directories. It works without a Go toolchain installed.
+
+```bash
+# "github.com/acme/app/internal/domain" → <moduleRoot>/internal/domain/*.go
+spaghetti-compass explore cmd/service/main.go -c .
+```
+
+**Features:**
+- Nearest-`go.mod` detection, including monorepos with several modules.
+- Standard library and external modules (`github.com/...`) classified as third-party.
+- Receiver methods addressed as `Type.Method`; `NewX` constructors and selector calls extracted.
+- Optional `gopls` for exact symbol positions; clean file-level fallback when absent.
+- `vendor/` and `.gomodcache/` are skipped by default; generated files (`*.gen.go`) are **not**
+  excluded by default (add `--exclude "**/*.gen.go"` if you want to).
+
+**Known limitations:** the no-`gopls` fallback is deterministic but not a compiler — it does not
+perform full interprocedural resolution, so calls dispatched through interfaces or injected
+dependencies may not link to a concrete implementation. Install `gopls` for higher precision.
 
 ### PHP PSR-4 Support
 
@@ -548,6 +601,12 @@ docker run --rm -v "$(pwd)":/app -w /app node:20 node bin/spaghetti-compass.js e
 
 # PHP - function exploration (resolves method calls across files)
 docker run --rm -v "$(pwd)":/app -w /app node:20 node bin/spaghetti-compass.js explore fixtures/php/src/Services/AuthService.php:login
+
+# Go - file exploration (resolves module-qualified internal imports via go.mod)
+docker run --rm -v "$(pwd)":/app -w /app node:20 node bin/spaghetti-compass.js explore fixtures/go/cmd/service/main.go -c fixtures/go
+
+# Go - method exploration (Type.Method call graph)
+docker run --rm -v "$(pwd)":/app -w /app node:20 node bin/spaghetti-compass.js explore fixtures/go/internal/application/usecases/receive_invoice.go:ReceiveInvoice.Execute -c fixtures/go
 
 # JSON output
 docker run --rm -v "$(pwd)":/app -w /app node:20 node bin/spaghetti-compass.js explore fixtures/typescript/main.ts --json
