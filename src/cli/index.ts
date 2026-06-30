@@ -40,7 +40,7 @@ const VERSION = packageJson.version;
  */
 function parseEntry(entry: string): { file: string; functionName?: string } {
   // Trouver l'extension du fichier pour savoir où commence la partie fonction
-  const extMatch = entry.match(/\.(ts|tsx|js|jsx|mjs|cjs|py|pyi|php)(?::|\/|$)/i);
+  const extMatch = entry.match(/\.(ts|tsx|js|jsx|mjs|cjs|py|pyi|php|go)(?::|\/|$)/i);
 
   if (!extMatch) {
     // Pas d'extension reconnue, traiter comme un chemin simple
@@ -94,7 +94,7 @@ function createContext(
 ): ContextInfo {
   return {
     rootPath: path.resolve(contextPath),
-    includePatterns: include.length > 0 ? include : ['**/*.ts', '**/*.js'],
+    includePatterns: include.length > 0 ? include : ['**/*.ts', '**/*.js', '**/*.go'],
     excludePatterns: exclude.length > 0 ? exclude : ['**/node_modules/**'],
   };
 }
@@ -273,7 +273,7 @@ program
     '--routes <glob...>',
     'Globs identifying routes / entry points (overrides config/route-patterns.txt)'
   )
-  .option('-i, --include <glob...>', 'Include patterns (default: **/*.ts, **/*.js, **/*.py, **/*.php)')
+  .option('-i, --include <glob...>', 'Include patterns (default: **/*.ts, **/*.js, **/*.py, **/*.php, **/*.go)')
   .option('-e, --exclude <glob...>', 'Exclude patterns (default: **/node_modules/**)')
   .option('-t, --tsconfig <path>', 'Path to tsconfig.json (default: auto-discover)')
   .option('-r, --root <path>', 'Project root directory (default: auto-discover from package.json)')
@@ -298,11 +298,11 @@ program
       const include =
         options.include && options.include.length > 0
           ? options.include
-          : ['**/*.ts', '**/*.tsx', '**/*.js', '**/*.jsx', '**/*.py', '**/*.pyi', '**/*.php'];
+          : ['**/*.ts', '**/*.tsx', '**/*.js', '**/*.jsx', '**/*.py', '**/*.pyi', '**/*.php', '**/*.go'];
       const exclude =
         options.exclude && options.exclude.length > 0
           ? options.exclude
-          : ['**/node_modules/**', '**/dist/**', '**/*.test.*', '**/*.spec.*'];
+          : ['**/node_modules/**', '**/dist/**', '**/*.test.*', '**/*.spec.*', '**/vendor/**', '**/.gomodcache/**'];
 
       const context = createContext(contextPath, include, exclude);
 

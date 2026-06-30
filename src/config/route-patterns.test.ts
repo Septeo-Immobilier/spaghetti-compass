@@ -41,6 +41,9 @@ describe('loadDefaultRoutePatterns', () => {
     expect(patterns).toContain('**/*.controller.ts'); // NestJS
     expect(patterns).toContain('**/*.routes.ts'); // Hono / Fastify / Express
     expect(patterns).toContain('**/*.handler.ts'); // handlers Hono / Lambda
+    // Go conventions.
+    expect(patterns).toContain('**/cmd/**/main.go'); // Go binary entry points
+    expect(patterns).toContain('**/internal/handlers/**/*.go'); // Go internal handlers
   });
 
   it('retombe sur le fallback si le fichier est introuvable', () => {

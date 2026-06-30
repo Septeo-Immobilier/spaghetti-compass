@@ -81,3 +81,15 @@
 # --- PHP (Symfony / Laravel) -----------------------------------------------
 # Convention: classes Controller (PSR: PascalCase + suffixe `Controller`).
 **/*Controller.php
+
+
+# --- Go (net/http, gorilla/mux, gin, chi, echo...) -------------------------
+# Convention: binaires dans cmd/<service>/main.go, handlers regroupés par domaine.
+**/cmd/**/main.go
+**/*handler.go
+**/*handlers.go
+**/*routes.go
+**/*router.go
+**/internal/http/**/*.go
+**/internal/handlers/**/*.go
+**/internal/server/**/*.go
