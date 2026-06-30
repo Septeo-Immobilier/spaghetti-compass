@@ -94,5 +94,6 @@ export interface LspConfig {
   paths?: {
     intelephense?: string;
     pyright?: string;
+    gopls?: string;
   };
 }

@@ -23,6 +23,7 @@ export { LspProcessManager, type ProcessManagerConfig } from './process-manager.
 export { TypeScriptLspProvider } from './typescript.js';
 export { PhpLspProvider } from './php.js';
 export { PythonLspProvider } from './python.js';
+export { GoLspProvider } from './go.js';
 export { NullLspProvider } from './null.js';
 
 // Factory

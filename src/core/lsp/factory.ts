@@ -7,6 +7,7 @@ import type { LspProvider, LspConfig } from './types.js';
 import { TypeScriptLspProvider } from './typescript.js';
 import { PhpLspProvider } from './php.js';
 import { PythonLspProvider } from './python.js';
+import { GoLspProvider } from './go.js';
 import { NullLspProvider } from './null.js';
 
 /**
@@ -22,6 +23,7 @@ const EXTENSION_MAP: Record<string, string> = {
   '.php': 'php',
   '.py': 'python',
   '.pyi': 'python',
+  '.go': 'go',
 };
 
 /**
@@ -93,6 +95,8 @@ export class LspProviderFactory {
         return new PhpLspProvider(this.config.debug);
       case 'python':
         return new PythonLspProvider(this.config.debug);
+      case 'go':
+        return new GoLspProvider(this.config.paths?.gopls, this.config.debug);
       default:
         return new NullLspProvider();
     }
