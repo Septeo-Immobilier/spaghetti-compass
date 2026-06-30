@@ -81,22 +81,30 @@ export class PathResolver {
       }
     }
 
+    // Détecter le langage du fichier source pour éviter qu'une stratégie
+    // de résolution spécifique à un langage n'intercepte les imports d'un autre.
+    // (ex: `./foo` ou `../bar` en TS/JS ne doivent PAS passer par la résolution PHP,
+    //  qui ne tente pas les extensions .ts/.tsx ni l'extensionless.)
+    const fromExt = path.extname(fromFile).toLowerCase();
+    const isPythonSource = fromExt === '.py' || fromExt === '.pyi';
+    const isPhpSource = fromExt === '.php';
+
     // Gérer les imports relatifs Python (.module, ..module, etc.)
-    if (this.isPythonRelativeImport(moduleSpecifier)) {
+    if (isPythonSource && this.isPythonRelativeImport(moduleSpecifier)) {
       resolved = this.resolvePythonRelativeImport(moduleSpecifier, fromFile);
       this.resolvedCache.set(cacheKey, resolved);
       return resolved;
     }
 
     // Gérer les chemins relatifs PHP avec __DIR__ (/../path/to/file.php)
-    if (this.isPhpRelativePath(moduleSpecifier)) {
+    if (isPhpSource && this.isPhpRelativePath(moduleSpecifier)) {
       resolved = this.resolvePhpRelativePath(moduleSpecifier, fromFile);
       this.resolvedCache.set(cacheKey, resolved);
       return resolved;
     }
 
     // Gérer les namespaces PHP (App\Models\User, etc.)
-    if (this.isPhpNamespace(moduleSpecifier)) {
+    if (isPhpSource && this.isPhpNamespace(moduleSpecifier)) {
       resolved = this.resolvePhpNamespace(moduleSpecifier, fromFile);
       this.resolvedCache.set(cacheKey, resolved);
       return resolved;

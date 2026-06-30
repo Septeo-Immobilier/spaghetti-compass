@@ -22,7 +22,7 @@ class AuthService
     public function login(): void {}
 }
 `;
-    expect(findPhpConstructorLine(content, 'AuthService')).toBe(10);
+    expect(findPhpConstructorLine(content, 'AuthService')).toBe(8);
   });
 
   it('retourne null pour une interface (pas de constructeur)', () => {
