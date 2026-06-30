@@ -7,6 +7,7 @@ import type { Parser } from './types.js';
 import { TypeScriptParser } from './typescript.js';
 import { PhpParser } from './php.js';
 import { PythonParser } from './python.js';
+import { GoParser } from './go.js';
 
 /**
  * Parser null pour les fichiers non supportés
@@ -37,6 +38,7 @@ export class ParserFactory {
   private tsParser: TypeScriptParser;
   private phpParser: PhpParser;
   private pythonParser: PythonParser;
+  private goParser: GoParser;
   private nullParser: NullParser;
 
   /** Liste ordonnée des parsers pour la détection */
@@ -46,9 +48,10 @@ export class ParserFactory {
     this.tsParser = new TypeScriptParser();
     this.phpParser = new PhpParser();
     this.pythonParser = new PythonParser();
+    this.goParser = new GoParser();
     this.nullParser = new NullParser();
 
-    this.parsers = [this.tsParser, this.phpParser, this.pythonParser];
+    this.parsers = [this.tsParser, this.phpParser, this.pythonParser, this.goParser];
   }
 
   /**
