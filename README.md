@@ -5,7 +5,8 @@ CLI tool to explore and visualize code dependency relations in **TypeScript**, *
 ## Features
 
 - **Multi-language support**: TypeScript/JavaScript, Python, and PHP
-- **Explore file dependencies**: Analyze imports/exports from any entry point
+- **Explore file dependencies**: Analyze imports/exports from any entry point (forward analysis)
+- **Reverse impact analysis**: From a target file, find every file — and every route/entry point — that depends on it, to know what could break if you change it
 - **Context-aware classification**: Define a "context" folder to distinguish internal vs external dependencies
 - **Transitive analysis**: See the complete dependency graph, not just direct imports
 - **Function-level exploration**: Drill down to specific functions and their call graphs
@@ -233,6 +234,79 @@ spaghetti-compass explore src/main.ts -c src/ --hyperlinks
 
 When hyperlinks are enabled, file paths become clickable links using the OSC 8 escape sequence. This works in terminals that support OSC 8 hyperlinks (iTerm2, Windows Terminal, some Linux terminals).
 
+## Reverse impact analysis (`impact`)
+
+`explore` answers *"what does this file depend on?"* (forward). `impact` answers the opposite,
+load-bearing question: *"if I modify this file, **what depends on it** and could break?"* — and in
+particular **which routes / entry points** are affected, including ones outside the path you are
+currently working on.
+
+```bash
+# Which files and routes depend on a shared domain model?
+spaghetti-compass impact src/shared/domain/project.model.ts --context src
+
+# Customize what counts as a "route" (default: **/*.controller.ts, **/*.controller.js)
+spaghetti-compass impact src/shared/utils/date.ts --context src --routes "**/*.controller.ts" "**/*.route.ts"
+
+# JSON for tooling / CI
+spaghetti-compass impact src/shared/domain/project.model.ts --context src --json
+```
+
+Output:
+```
+═════════════════════════════════════════════════════════════════
+ 🎯 Target: shared/domain/project.model.ts:1:1
+ 📁 Scanned: 364 files
+ 📊 Impact: 30 dependent(s), 12 direct, 3 route(s) impacted
+ 🚪 Route patterns: **/*.controller.ts, **/*.controller.js
+═════════════════════════════════════════════════════════════════
+
+🚪 IMPACTED ROUTES (verify these):
+├── modules/photo-gallery/infrastructure/http/photo-gallery.controller.ts:1:1
+│   ↳ photo-gallery.controller.ts ↳ create-photo.use-case.ts ↳ project.repository.ts ↳ project.model.ts
+└── shared/http/projects.controller.ts:1:1
+    ↳ projects.controller.ts ↳ create-project-for-user.use-case.ts ↳ project.model.ts
+```
+
+Each impacted route is shown with the **shortest dependency chain** from the route down to the
+target — so you can see *why* a route is affected. This is the answer to *"I changed file A used by
+route R; which **other** routes also go through A and must be re-checked?"*.
+
+| Option | Alias | Description | Default |
+|--------|-------|-------------|---------|
+| `--context <dir>` | `-c` | Directory to scan for dependents | `.` |
+| `--routes <glob...>` | | Globs identifying routes / entry points (overrides the config file) | from [`config/route-patterns.txt`](config/route-patterns.txt) |
+| `--json` | `-j` | Output as JSON | `false` |
+| `--include <glob...>` | `-i` | Files to scan | all supported languages |
+| `--exclude <glob...>` | `-e` | Files to skip | `**/node_modules/**`, `**/dist/**`, tests |
+| `--tsconfig <path>` | `-t` | tsconfig for alias resolution | auto-discover |
+| `--root <path>` | `-r` | Project root | auto-discover |
+| `--absolute-paths` | | Absolute instead of relative paths | `false` |
+| `--no-links` | | Disable `path:line:column` format | |
+
+The JSON output exposes `target`, `scannedFiles`, `directDependents`, `dependents`, and `routes`
+(each with a `chain` array from route to target).
+
+### Customizing what counts as a "route"
+
+The default route patterns live in a single, plain-text, heavily-commented file:
+**[`config/route-patterns.txt`](config/route-patterns.txt)**. It is read **at runtime**, so you can
+add or remove naming conventions by hand — **no rebuild needed**.
+
+- One glob per line; blank lines ignored; anything after `#` is a comment.
+- Ships with conventions for NestJS (`*.controller.ts`), Hono/Fastify/Express (`*.routes.ts`,
+  `*.handler.ts`), Next.js (`app/**/route.ts`), Nuxt (`server/api/**`), SvelteKit (`+server.ts`),
+  Python (`routers/**`, `*_router.py`) and PHP (`*Controller.php`).
+- The `--routes` CLI flag overrides the file entirely for a one-off run.
+
+```bash
+# uses config/route-patterns.txt
+spaghetti-compass impact src/domain/errors/auth.errors.ts -c src
+
+# one-off override, ignores the file
+spaghetti-compass impact src/domain/errors/auth.errors.ts -c src --routes "**/*.routes.ts"
+```
+
 ## Agent setup
 
 Configure your project for an AI agent workflow (Cursor, etc.) in one command. Writes or overwrites rules, commands, and skills in the target directory. Idempotent: re-run to update after a package upgrade.
@@ -327,6 +401,9 @@ npx spaghetti-compass explore src/index.ts --json | jq '.stats.circularDependenc
 
 # Count impacted files
 npx spaghetti-compass explore src/utils/helper.ts --json | jq '.nodes | length'
+
+# Reverse: which routes depend on a file (impact analysis)
+npx spaghetti-compass impact src/shared/domain/project.model.ts -c src --json | jq '.routes[].path'
 ```
 
 ### JSON Output Schema
@@ -360,7 +437,8 @@ interface DependencyGraph {
 
 You can ask your AI agent:
 
-- *"Use spaghetti-compass to analyze the dependencies of `src/api/routes.ts` and tell me which files would be affected if I modify it"*
+- *"Use spaghetti-compass `impact` to tell me which files and routes would be affected if I modify `src/api/routes.ts`"* (reverse analysis)
+- *"Use spaghetti-compass `explore` to list what `src/api/routes.ts` depends on"* (forward analysis)
 - *"Check if there are any circular dependencies in the `src/` folder using spaghetti-compass"*
 - *"Explore the call graph of the `authenticate` function and list all internal function calls"*
 

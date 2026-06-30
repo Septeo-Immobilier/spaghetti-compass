@@ -8,8 +8,11 @@ import * as fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import type { ContextInfo, AnalyzeOptions } from '../types/index.js';
 import { Analyzer } from '../core/analyzer.js';
+import { ImpactAnalyzer } from '../core/impact.js';
 import { formatText } from '../output/text.js';
 import { formatJson } from '../output/json.js';
+import { formatImpactText, formatImpactJson } from '../output/impact.js';
+import { loadDefaultRoutePatterns } from '../config/route-patterns.js';
 import { TsConfigResolver } from '../core/tsconfig.js';
 import { runAgentSetup } from './agent-setup/index.js';
 import { getSupportedWorkflowIds } from './agent-setup/workflows.js';
@@ -252,6 +255,112 @@ program
         console.log(formatJson(graph));
       } else {
         console.log(formatText(graph, formatOptions));
+      }
+
+      process.exit(EXIT_SUCCESS);
+    } catch (error) {
+      console.error(`Error: ${error instanceof Error ? error.message : String(error)}`);
+      process.exit(EXIT_PARSE_ERROR);
+    }
+  });
+
+program
+  .command('impact')
+  .description('Reverse analysis: find which files (and routes) depend on a target file')
+  .argument('<file>', 'Target file that would be modified')
+  .option('-c, --context <dir>', 'Context directory to scan for dependents', '.')
+  .option('-j, --json', 'Output as JSON', false)
+  .option(
+    '--routes <glob...>',
+    'Globs identifying routes / entry points (overrides config/route-patterns.txt)'
+  )
+  .option('-i, --include <glob...>', 'Include patterns (default: **/*.ts, **/*.js, **/*.py, **/*.php)')
+  .option('-e, --exclude <glob...>', 'Exclude patterns (default: **/node_modules/**)')
+  .option('-t, --tsconfig <path>', 'Path to tsconfig.json (default: auto-discover)')
+  .option('-r, --root <path>', 'Project root directory (default: auto-discover from package.json)')
+  .option('--no-tsconfig', 'Disable TypeScript alias resolution')
+  .option('--absolute-paths', 'Use absolute paths instead of relative paths', false)
+  .option('--no-links', 'Disable clickable path:line:column format')
+  .action(async (file: string, options) => {
+    try {
+      const entryPath = path.resolve(file);
+      if (!fs.existsSync(entryPath)) {
+        console.error(`Error: File not found: ${entryPath}`);
+        process.exit(EXIT_FILE_NOT_FOUND);
+      }
+
+      const contextPath = path.resolve(options.context);
+      if (!fs.existsSync(contextPath) || !fs.statSync(contextPath).isDirectory()) {
+        console.error(`Error: Context directory not found: ${contextPath}`);
+        process.exit(EXIT_CONTEXT_NOT_FOUND);
+      }
+
+      // Inclure tous les langages supportés par défaut pour le scan inverse.
+      const include =
+        options.include && options.include.length > 0
+          ? options.include
+          : ['**/*.ts', '**/*.tsx', '**/*.js', '**/*.jsx', '**/*.py', '**/*.pyi', '**/*.php'];
+      const exclude =
+        options.exclude && options.exclude.length > 0
+          ? options.exclude
+          : ['**/node_modules/**', '**/dist/**', '**/*.test.*', '**/*.spec.*'];
+
+      const context = createContext(contextPath, include, exclude);
+
+      // Découverte tsconfig (alias) — même logique que `explore`.
+      if (!options.noTsconfig) {
+        if (options.tsconfig) {
+          const customTsConfig = path.resolve(options.tsconfig);
+          if (!fs.existsSync(customTsConfig)) {
+            console.error(`Error: TSConfig file not found: ${customTsConfig}`);
+            process.exit(EXIT_FILE_NOT_FOUND);
+          }
+          context.tsConfigPath = customTsConfig;
+        } else {
+          const discoveredTsConfig = TsConfigResolver.findTsConfig(entryPath);
+          if (discoveredTsConfig) {
+            context.tsConfigPath = discoveredTsConfig;
+          }
+        }
+      }
+
+      // Découverte de la racine projet.
+      if (options.root) {
+        const customRoot = path.resolve(options.root);
+        if (!fs.existsSync(customRoot) || !fs.statSync(customRoot).isDirectory()) {
+          console.error(`Error: Root directory not found: ${customRoot}`);
+          process.exit(EXIT_CONTEXT_NOT_FOUND);
+        }
+        context.projectRoot = customRoot;
+      } else {
+        const discoveredPackageJson = TsConfigResolver.findPackageJson(entryPath);
+        if (discoveredPackageJson) {
+          context.projectRoot = path.dirname(discoveredPackageJson);
+        } else if (context.tsConfigPath) {
+          context.projectRoot = path.dirname(context.tsConfigPath);
+        }
+      }
+
+      // Par défaut: patterns lus depuis config/route-patterns.txt (éditable à la main).
+      // `--routes` les remplace entièrement.
+      const routePatterns =
+        options.routes && options.routes.length > 0
+          ? options.routes
+          : loadDefaultRoutePatterns();
+
+      const analyzer = new ImpactAnalyzer(context);
+      const result = analyzer.analyze(entryPath, { routePatterns });
+
+      if (options.json) {
+        console.log(formatImpactJson(result));
+      } else {
+        console.log(
+          formatImpactText(result, {
+            absolutePaths: options.absolutePaths,
+            noLinks: options.links === false,
+            rootPath: context.rootPath,
+          })
+        );
       }
 
       process.exit(EXIT_SUCCESS);

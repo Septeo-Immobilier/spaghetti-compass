@@ -1,0 +1,83 @@
+# ============================================================================
+# spaghetti-compass — Patterns de ROUTES par défaut (points d'entrée)
+# ============================================================================
+#
+# CE FICHIER EST LA SOURCE DE VÉRITÉ pour la commande `impact`.
+# Il liste les conventions de nommage des fichiers qui sont des POINTS D'ENTRÉE
+# (routes HTTP, handlers, controllers...). Quand tu lances :
+#
+#     spaghetti-compass impact <fichier> --context <dir>
+#
+# sans l'option `--routes`, ce sont CES patterns qui déterminent quels
+# dépendants sont signalés comme « routes impactées à vérifier ».
+#
+# ----------------------------------------------------------------------------
+# COMMENT MODIFIER (sans IA, sans recompiler)
+# ----------------------------------------------------------------------------
+#   - Une ligne = un glob, comparé au chemin de chaque fichier RELATIF au
+#     dossier passé en `--context`.
+#   - Ajoute / supprime / commente des lignes librement, puis relance la commande.
+#     Aucun build n'est nécessaire : ce fichier est lu à chaque exécution.
+#   - Les lignes vides sont ignorées.
+#   - Tout ce qui suit un `#` est un commentaire (ligne entière ou fin de ligne).
+#   - Pour un usage ponctuel, `--routes "<glob>" "<glob>"` sur la ligne de
+#     commande IGNORE complètement ce fichier (override total).
+#
+# ----------------------------------------------------------------------------
+# SYNTAXE GLOB SUPPORTÉE
+# ----------------------------------------------------------------------------
+#   **    n'importe quel nombre de dossiers (y compris zéro)
+#   *     n'importe quels caractères à l'intérieur d'un seul segment (pas de `/`)
+#   ?     exactement un caractère (pas de `/`)
+#   Exemple : `**/*.controller.ts` matche `a/b/x.controller.ts` ET `x.controller.ts`.
+#
+# ============================================================================
+
+
+# --- NestJS (Modelo: homestaging, calendar) --------------------------------
+# Convention: un controller par ressource, suffixe `.controller`.
+**/*.controller.ts
+**/*.controller.js
+
+
+# --- Hono / Fastify / Express / Koa (Modelo: hub) --------------------------
+# Convention: fichiers de routes regroupant les endpoints d'un domaine.
+**/*.routes.ts
+**/*.routes.js
+**/*.route.ts
+**/*.route.js
+# Handlers individuels (Hono, AWS Lambda, serverless...).
+**/*.handler.ts
+**/*.handler.js
+
+
+# --- Next.js (App Router) ---------------------------------------------------
+# Convention: fichiers spéciaux `route` (API) et `page` (pages) sous `app/`.
+**/app/**/route.ts
+**/app/**/route.js
+**/app/**/page.tsx
+**/app/**/page.jsx
+
+
+# --- Nuxt / Vue (server routes) --------------------------------------------
+# Convention Nuxt: handlers sous `server/api` et `server/routes`.
+**/server/api/**/*.ts
+**/server/routes/**/*.ts
+
+
+# --- SvelteKit --------------------------------------------------------------
+**/+server.ts
+**/+page.server.ts
+
+
+# --- Python (FastAPI / Flask / Django REST) --------------------------------
+# Convention courante: modules `routes`/`routers`, ou suffixe `_router`/`_views`.
+**/routes/**/*.py
+**/routers/**/*.py
+**/*_router.py
+**/views.py
+
+
+# --- PHP (Symfony / Laravel) -----------------------------------------------
+# Convention: classes Controller (PSR: PascalCase + suffixe `Controller`).
+**/*Controller.php

@@ -51,7 +51,8 @@
   },
   "files": [
     "dist",
-    "bin"
+    "bin",
+    "config"
   ],
   "dependencies": {
     "commander": "^12.1.0",
