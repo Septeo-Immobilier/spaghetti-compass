@@ -1,3 +1,17 @@
+## [1.4.0](https://github.com/gh-septeo/spaghetti-compass/compare/v1.3.0...v1.4.0) (2026-06-30)
+
+### ✨ Features
+
+* **cli:** add reverse `impact` command with file-based route patterns ([f3a5cee](https://github.com/gh-septeo/spaghetti-compass/commit/f3a5cee09423183dddcc5fa1fd5fbd98da98ed3d))
+
+### 🐛 Bug Fixes
+
+* **resolver:** stop PHP/Python resolution from hijacking TS/JS relative imports ([b0b1e64](https://github.com/gh-septeo/spaghetti-compass/commit/b0b1e64b7ace02b9f0507ad51b877840db8fd0f1))
+
+### ♻️ Refactoring
+
+* **agent-setup:** simplify to skill-only with multi-destination support ([a799d0c](https://github.com/gh-septeo/spaghetti-compass/commit/a799d0c353e50abf77255d34d2ac81b797f7519e))
+
 ## [1.3.0](https://github.com/gh-septeo/spaghetti-compass/compare/v1.2.0...v1.3.0) (2026-02-12)
 
 ### ✨ Features
