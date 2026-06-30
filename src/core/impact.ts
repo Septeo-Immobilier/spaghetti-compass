@@ -186,7 +186,7 @@ export class ImpactAnalyzer {
     for (const spec of specifiers) {
       const resolved = this.resolver.resolve(spec, file);
       if (!resolved) continue;
-      const location = this.resolver.classifyLocation(resolved, spec);
+      const location = this.resolver.classifyLocation(resolved, spec, file);
       if (location === 'internal') {
         result.push(path.resolve(resolved));
       }
@@ -211,7 +211,7 @@ export class ImpactAnalyzer {
         const full = path.join(dir, entry.name);
         if (entry.isDirectory()) {
           // Élagage rapide des répertoires lourds courants.
-          if (entry.name === 'node_modules' || entry.name === '.git' || entry.name === 'vendor') {
+          if (entry.name === 'node_modules' || entry.name === '.git' || entry.name === 'vendor' || entry.name === '.gomodcache') {
             continue;
           }
           walk(full);

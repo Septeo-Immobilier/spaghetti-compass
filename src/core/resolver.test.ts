@@ -75,3 +75,68 @@ describe('PathResolver - PHP non régressé', () => {
     expect(resolved).toBe(path.join(repoRoot, 'fixtures/php/src/Utils/helpers.php'));
   });
 });
+
+describe('PathResolver - Go module resolution', () => {
+  const goFixtureRoot = path.join(repoRoot, 'fixtures/go');
+
+  function goContext(): ContextInfo {
+    return {
+      rootPath: goFixtureRoot,
+      projectRoot: goFixtureRoot,
+      includePatterns: ['**/*.go'],
+      excludePatterns: [],
+    };
+  }
+
+  const fromMain = path.join(goFixtureRoot, 'cmd/service/main.go');
+  const fromUsecase = path.join(goFixtureRoot, 'internal/application/usecases/receive_invoice.go');
+
+  it('résout un import interne Go vers un fichier .go représentatif', () => {
+    const r = new PathResolver(goContext());
+    const resolved = r.resolve('github.com/example/app/internal/domain/invoice', fromUsecase);
+    expect(resolved).not.toBeNull();
+    expect(resolved).toMatch(/\.go$/);
+    expect(resolved).toContain('internal/domain/invoice');
+  });
+
+  it('classifie un import interne Go résolu comme `internal`', () => {
+    const r = new PathResolver(goContext());
+    const resolved = r.resolve('github.com/example/app/internal/domain/invoice', fromUsecase);
+    const location = r.classifyLocation(resolved, 'github.com/example/app/internal/domain/invoice', fromUsecase);
+    expect(location).toBe('internal');
+  });
+
+  it('retourne null pour un import stdlib Go (`context`)', () => {
+    const r = new PathResolver(goContext());
+    const resolved = r.resolve('context', fromMain);
+    expect(resolved).toBeNull();
+  });
+
+  it('classifie un import stdlib Go comme `third-party`', () => {
+    const r = new PathResolver(goContext());
+    const resolved = r.resolve('context', fromMain);
+    const location = r.classifyLocation(resolved, 'context', fromMain);
+    expect(location).toBe('third-party');
+  });
+
+  it('retourne null pour un module tiers Go (`github.com/google/uuid`)', () => {
+    const r = new PathResolver(goContext());
+    // uuid n'est pas dans fixtures/go, donc resolveImport retourne null
+    const resolved = r.resolve('github.com/google/uuid', fromUsecase);
+    expect(resolved).toBeNull();
+  });
+
+  it('classifie un module tiers Go comme `third-party`', () => {
+    const r = new PathResolver(goContext());
+    const resolved = r.resolve('github.com/google/uuid', fromUsecase);
+    const location = r.classifyLocation(resolved, 'github.com/google/uuid', fromUsecase);
+    expect(location).toBe('third-party');
+  });
+
+  it('ne classe pas un import Go comme npm package', () => {
+    const r = new PathResolver(goContext());
+    // Un import Go bare (même avec des points) n'est jamais un package npm
+    expect(r.isNpmPackage('github.com/example/app/internal/domain/invoice', fromMain)).toBe(false);
+    expect(r.isNpmPackage('context', fromMain)).toBe(false);
+  });
+});

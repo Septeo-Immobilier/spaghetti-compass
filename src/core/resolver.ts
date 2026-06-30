@@ -7,6 +7,7 @@ import * as fs from 'node:fs';
 import type { NodeLocation, ContextInfo } from '../types/index.js';
 import { TsConfigResolver } from './tsconfig.js';
 import { ComposerResolver } from './composer.js';
+import { GoModResolver } from './go-mod.js';
 
 /**
  * Résout les chemins de modules et classifie leur localisation
@@ -16,6 +17,7 @@ export class PathResolver {
   private resolvedCache: Map<string, string | null> = new Map();
   private tsConfigResolver: TsConfigResolver | null = null;
   private composerResolver: ComposerResolver;
+  private goModResolver: GoModResolver;
 
   constructor(context: ContextInfo) {
     this.context = context;
@@ -23,12 +25,19 @@ export class PathResolver {
       this.tsConfigResolver = new TsConfigResolver(context.tsConfigPath);
     }
     this.composerResolver = new ComposerResolver();
+    this.goModResolver = new GoModResolver();
   }
 
   /**
-   * Vérifie si un specifier est un package npm (bare import)
+   * Vérifie si un specifier est un package npm (bare import).
+   * Quand fromFile est un fichier .go, les imports Go ne sont jamais des packages npm.
    */
-  isNpmPackage(moduleSpecifier: string): boolean {
+  isNpmPackage(moduleSpecifier: string, fromFile?: string): boolean {
+    // Les imports Go (fichiers .go) ne sont jamais des packages npm
+    if (fromFile && path.extname(fromFile).toLowerCase() === '.go') {
+      return false;
+    }
+
     // Bare imports: ne commencent pas par '.', '/', ou un chemin Windows
     if (
       moduleSpecifier.startsWith('.') ||
@@ -88,6 +97,7 @@ export class PathResolver {
     const fromExt = path.extname(fromFile).toLowerCase();
     const isPythonSource = fromExt === '.py' || fromExt === '.pyi';
     const isPhpSource = fromExt === '.php';
+    const isGoSource = fromExt === '.go';
 
     // Gérer les imports relatifs Python (.module, ..module, etc.)
     if (isPythonSource && this.isPythonRelativeImport(moduleSpecifier)) {
@@ -106,6 +116,15 @@ export class PathResolver {
     // Gérer les namespaces PHP (App\Models\User, etc.)
     if (isPhpSource && this.isPhpNamespace(moduleSpecifier)) {
       resolved = this.resolvePhpNamespace(moduleSpecifier, fromFile);
+      this.resolvedCache.set(cacheKey, resolved);
+      return resolved;
+    }
+
+    // Gérer les imports Go — ne jamais laisser tomber sur la résolution TS/npm
+    if (isGoSource) {
+      // resolveImport retourne un chemin absolu si c'est un import interne,
+      // null pour la stdlib et les modules tiers.
+      resolved = this.goModResolver.resolveImport(moduleSpecifier, fromFile);
       this.resolvedCache.set(cacheKey, resolved);
       return resolved;
     }
@@ -291,9 +310,27 @@ export class PathResolver {
   }
 
   /**
-   * Classifie la localisation d'un fichier résolu
+   * Classifie la localisation d'un fichier résolu.
+   * Quand fromFile est un fichier .go, utilise une classification Go-aware:
+   *   - import interne résolu (dans le contexte) -> 'internal'
+   *   - stdlib / module tiers non résolu -> 'third-party'
    */
-  classifyLocation(resolvedPath: string | null, moduleSpecifier: string): NodeLocation {
+  classifyLocation(resolvedPath: string | null, moduleSpecifier: string, fromFile?: string): NodeLocation {
+    // Classification Go-aware
+    if (fromFile && path.extname(fromFile).toLowerCase() === '.go') {
+      if (resolvedPath) {
+        const normalizedResolved = path.resolve(resolvedPath);
+        const projectRoot = this.context.projectRoot || this.context.rootPath;
+        const normalizedContext = path.resolve(projectRoot);
+        if (normalizedResolved.startsWith(normalizedContext + path.sep) ||
+            normalizedResolved === normalizedContext) {
+          return 'internal';
+        }
+      }
+      // Stdlib ou module tiers (resolvedPath est null) -> third-party
+      return 'third-party';
+    }
+
     // Package npm -> third-party
     if (this.isNpmPackage(moduleSpecifier)) {
       return 'third-party';
@@ -306,7 +343,7 @@ export class PathResolver {
 
     // Normaliser les chemins pour comparaison
     const normalizedResolved = path.resolve(resolvedPath);
-    
+
     // Utiliser projectRoot si disponible, sinon rootPath
     const projectRoot = this.context.projectRoot || this.context.rootPath;
     const normalizedContext = path.resolve(projectRoot);

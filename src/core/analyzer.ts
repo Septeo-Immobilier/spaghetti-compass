@@ -227,7 +227,7 @@ export class Analyzer {
 
     // Résoudre le chemin du module
     const resolvedPath = this.resolver.resolve(moduleSpecifier, fromFile);
-    const location = this.resolver.classifyLocation(resolvedPath, moduleSpecifier);
+    const location = this.resolver.classifyLocation(resolvedPath, moduleSpecifier, fromFile);
 
     // Vérifier si c'est un alias TypeScript résolu
     let aliasInfo: { original: string; pattern: string; resolvedVia: string } | undefined;
@@ -247,8 +247,8 @@ export class Analyzer {
     const targetId = resolvedPath || moduleSpecifier;
     const targetNode: GraphNode = {
       id: targetId,
-      type: this.resolver.isNpmPackage(moduleSpecifier) ? 'external-module' : 'file',
-      name: this.resolver.isNpmPackage(moduleSpecifier)
+      type: this.resolver.isNpmPackage(moduleSpecifier, fromFile) ? 'external-module' : 'file',
+      name: this.resolver.isNpmPackage(moduleSpecifier, fromFile)
         ? this.resolver.getPackageName(moduleSpecifier)
         : path.basename(targetId),
       path: resolvedPath ? this.resolver.getRelativePath(resolvedPath) : undefined,
@@ -300,13 +300,13 @@ export class Analyzer {
     if (!exportInfo.fromModule) return;
 
     const resolvedPath = this.resolver.resolve(exportInfo.fromModule, fromFile);
-    const location = this.resolver.classifyLocation(resolvedPath, exportInfo.fromModule);
+    const location = this.resolver.classifyLocation(resolvedPath, exportInfo.fromModule, fromFile);
 
     const targetId = resolvedPath || exportInfo.fromModule;
     const targetNode: GraphNode = {
       id: targetId,
-      type: this.resolver.isNpmPackage(exportInfo.fromModule) ? 'external-module' : 'file',
-      name: this.resolver.isNpmPackage(exportInfo.fromModule)
+      type: this.resolver.isNpmPackage(exportInfo.fromModule, fromFile) ? 'external-module' : 'file',
+      name: this.resolver.isNpmPackage(exportInfo.fromModule, fromFile)
         ? this.resolver.getPackageName(exportInfo.fromModule)
         : path.basename(targetId),
       path: resolvedPath ? this.resolver.getRelativePath(resolvedPath) : undefined,
@@ -717,6 +717,38 @@ export class Analyzer {
                 line: defLine,
                 column: 1,
               };
+            }
+          }
+        }
+
+        // Pour les imports Go avec fromModule (appels sélecteur: pkg.Func),
+        // résoudre le fichier cible via PathResolver et y chercher la fonction.
+        if (!definition && call.fromModule && path.extname(filePath).toLowerCase() === '.go') {
+          const resolvedModFile = this.resolver.resolve(call.fromModule, filePath);
+          if (resolvedModFile) {
+            // Le nom de fonction dans le call peut être "pkg.FuncName" — extraire la partie après le point
+            const funcName = call.name.includes('.')
+              ? call.name.split('.').pop()!
+              : call.name;
+            let targetParseResult = this.parsedFilesCache.get(resolvedModFile);
+            if (!targetParseResult) {
+              const parsed = this.parseFile(resolvedModFile, { extractFunctions: true });
+              if (parsed) {
+                targetParseResult = parsed;
+                this.parsedFilesCache.set(resolvedModFile, parsed);
+              }
+            }
+            if (targetParseResult) {
+              const func = targetParseResult.functions.find(
+                (f) => f.name === funcName || f.name.endsWith(`.${funcName}`)
+              );
+              if (func) {
+                definition = {
+                  filePath: resolvedModFile,
+                  line: func.line,
+                  column: 1,
+                };
+              }
             }
           }
         }
