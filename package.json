@@ -8,7 +8,7 @@
     "spaghetti-compass": "./bin/spaghetti-compass.js"
   },
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && node scripts/copy-templates.mjs",
     "dev": "tsc --watch",
     "test": "vitest",
     "test:run": "vitest run",
