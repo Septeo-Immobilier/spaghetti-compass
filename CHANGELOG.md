@@ -1,3 +1,17 @@
+## [1.5.0](https://github.com/gh-septeo/spaghetti-compass/compare/v1.4.0...v1.5.0) (2026-07-01)
+
+### ✨ Features
+
+* **build:** enhance build process to include template asset copying ([0d85bb4](https://github.com/gh-septeo/spaghetti-compass/commit/0d85bb431bc0da2ae056dade41ce47f0e2a531e2))
+* **cli:** recognize .go entries, defaults and Go route patterns ([bc4918b](https://github.com/gh-septeo/spaghetti-compass/commit/bc4918b4f8322871e842f553422307d43dfde15d))
+* **lsp:** add optional gopls provider for Go ([a68eca4](https://github.com/gh-septeo/spaghetti-compass/commit/a68eca43bdda2a0b66495405ce444f42e2b99e5e))
+* **parser:** add Go parser (.go) ([7e9eb9c](https://github.com/gh-septeo/spaghetti-compass/commit/7e9eb9cf3d4d400b6558aa24109d705dc58c8aee))
+* **resolver:** resolve Go internal imports via go.mod ([47e9a7a](https://github.com/gh-septeo/spaghetti-compass/commit/47e9a7a0d65513380e4a20133cbccdce554b7bf7))
+
+### 📚 Documentation
+
+* **go:** document Go support and add feature spec ([5e2280b](https://github.com/gh-septeo/spaghetti-compass/commit/5e2280b3116e89f2f127334607f01819734c9d9f))
+
 ## [1.4.0](https://github.com/gh-septeo/spaghetti-compass/compare/v1.3.0...v1.4.0) (2026-06-30)
 
 ### ✨ Features
