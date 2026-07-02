@@ -8,7 +8,7 @@
     "spaghetti-compass": "./bin/spaghetti-compass.js"
   },
   "scripts": {
-    "build": "tsc && node scripts/copy-templates.mjs",
+    "build": "tsc",
     "dev": "tsc --watch",
     "test": "vitest",
     "test:run": "vitest run",
@@ -55,7 +55,6 @@
     "config"
   ],
   "dependencies": {
-    "@inquirer/prompts": "^8.5.2",
     "commander": "^12.1.0",
     "typescript": "^5.9.3"
   },
