@@ -1,3 +1,15 @@
+## [1.5.1](https://github.com/gh-septeo/spaghetti-compass/compare/v1.5.0...v1.5.1) (2026-07-02)
+
+### ♻️ Refactoring
+
+* **analyzer:** minor code improvements ([d70fd05](https://github.com/gh-septeo/spaghetti-compass/commit/d70fd053171d08bc48c8cf3f88715e77967340bb))
+* **cli:** remove agent-setup command and related files ([1225f20](https://github.com/gh-septeo/spaghetti-compass/commit/1225f203052867e815cfad7b21bacf6de3d07a83))
+
+### 📚 Documentation
+
+* finalize readme updates ([3474d69](https://github.com/gh-septeo/spaghetti-compass/commit/3474d69d0c3aa6095cf61b58467bb4f595c7a95d))
+* **readme:** update documentation ([f2d1a11](https://github.com/gh-septeo/spaghetti-compass/commit/f2d1a11fd4ac3b458361ea469bae15493a3fa0a9))
+
 ## [1.5.0](https://github.com/gh-septeo/spaghetti-compass/compare/v1.4.0...v1.5.0) (2026-07-01)
 
 ### ✨ Features
