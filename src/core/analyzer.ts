@@ -61,7 +61,7 @@ export class Analyzer {
 
   constructor(context: ContextInfo) {
     // Découvrir automatiquement tsconfig et package.json si non fournis
-    let enhancedContext = { ...context };
+    const enhancedContext = { ...context };
 
     if (!enhancedContext.tsConfigPath && !enhancedContext.projectRoot) {
       // Essayer de trouver depuis le rootPath
