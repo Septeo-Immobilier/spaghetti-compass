@@ -337,29 +337,23 @@ spaghetti-compass impact src/domain/errors/auth.errors.ts -c src
 spaghetti-compass impact src/domain/errors/auth.errors.ts -c src --routes "**/*.routes.ts"
 ```
 
-## Agent setup
+## Agent skill
 
-Configure your project for an AI agent workflow (Cursor, etc.) in one command. Writes or overwrites rules, commands, and skills in the target directory. Idempotent: re-run to update after a package upgrade.
+An agent skill that teaches an AI assistant (Cursor, Claude, etc.) how and when to use
+spaghetti-compass is provided as plain Markdown:
+
+**[`docs/skills/spaghetti-compass/SKILL.md`](docs/skills/spaghetti-compass/SKILL.md)**
+
+It covers three use cases — reverse impact analysis during review, efficient dependency
+exploration, and narrating a data flow in natural language with clickable symbol links.
+
+To install it, copy the file into your agent's skill directory, e.g.:
 
 ```bash
-# Configure current directory for Cursor (default workflow)
-spaghetti-compass agent-setup --workflow cursor
-
-# Or use short options and a custom path
-spaghetti-compass agent-setup -w cursor -p ./packages/my-app
-
-# Show help and supported workflows
-spaghetti-compass agent-setup --help
+mkdir -p .cursor/skills-cursor/spaghetti-compass-exploration
+cp docs/skills/spaghetti-compass/SKILL.md .cursor/skills-cursor/spaghetti-compass-exploration/
+# or .claude/skills/… , .agents/skills/… depending on your tool
 ```
-
-| Option | Alias | Description | Default |
-|--------|-------|-------------|---------|
-| `--workflow <id>` | `-w` | Workflow id | `cursor` |
-| `--path <dir>` | `-p` | Target directory | current directory |
-
-**Supported workflows**: `cursor` (writes `.cursor/rules/`, `.cursor/commands/`, `.agents/skills/`).
-
-**Exit codes**: 0 success, 2 invalid path (not a directory or missing), 5 unknown workflow.
 
 ## Options
 
