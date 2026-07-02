@@ -14,7 +14,6 @@ import { formatJson } from '../output/json.js';
 import { formatImpactText, formatImpactJson } from '../output/impact.js';
 import { loadDefaultRoutePatterns } from '../config/route-patterns.js';
 import { TsConfigResolver } from '../core/tsconfig.js';
-import { runAgentSetup } from './agent-setup/index.js';
 
 // Exit codes
 const EXIT_SUCCESS = 0;
@@ -367,24 +366,6 @@ program
       console.error(`Error: ${error instanceof Error ? error.message : String(error)}`);
       process.exit(EXIT_PARSE_ERROR);
     }
-  });
-
-program
-  .command('agent-setup')
-  .description('Configure the project for an AI agent by writing a skill file. Supports multiple destinations.')
-  .argument('[path]', 'Target directory (default: current directory)', '.')
-  .option('-d, --dest <id...>', 'Destination(s): claude, cursor, agents (repeatable)')
-  .option('-p, --path <dir>', 'Target directory (overrides [path] argument)')
-  .action(async (pathArg: string, options: { dest?: string | string[]; path?: string }) => {
-    const targetPath = options.path ?? pathArg;
-    let destIds: string[] | undefined;
-
-    if (options.dest) {
-      // Normalize dest to array (commander may return string or array depending on usage)
-      destIds = Array.isArray(options.dest) ? options.dest : [options.dest];
-    }
-
-    await runAgentSetup(targetPath, destIds);
   });
 
 // Parser les arguments
