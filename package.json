@@ -1,5 +1,8 @@
 {
-  "name": "spaghetti-compass",
+  "name": "@septeo-immo/spaghetti-compass",
+  "publishConfig": {
+    "access": "restricted"
+  },
   "version": "1.5.1",
   "description": "CLI tool to explore and visualize code dependency relations",
   "type": "module",
