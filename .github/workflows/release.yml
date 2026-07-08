@@ -34,6 +34,9 @@ jobs:
         with:
           node-version: "20"
           registry-url: "https://registry.npmjs.org"
+          scope: "@septeo-immo"
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Install dependencies
         run: npm ci
@@ -82,11 +85,11 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Publish to npm with provenance
+      - name: Publish to private npm registry with provenance
         if: ${{ github.event.inputs.dry_run != 'true' && steps.semantic-release.outcome == 'success' }}
         run: |
           PACKAGE_VERSION=$(node -p "require('./package.json').version")
-          echo "📦 Publishing version $PACKAGE_VERSION to npm with provenance..."
-          npm publish --provenance --access public
+          echo "📦 Publishing @septeo-immo/spaghetti-compass@$PACKAGE_VERSION with provenance..."
+          npm publish --provenance
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
