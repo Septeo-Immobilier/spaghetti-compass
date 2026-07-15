@@ -1,3 +1,9 @@
+## [1.0.1](https://github.com/Septeo-Immobilier/spaghetti-compass/compare/v1.0.0...v1.0.1) (2026-07-15)
+
+### 🐛 Bug Fixes
+
+* **ci:** publish scoped package with public access for provenance ([cc67147](https://github.com/Septeo-Immobilier/spaghetti-compass/commit/cc6714735fa3ffe98aab75b3819d5254af3cb0e9))
+
 ## 1.0.0 (2026-07-15)
 
 ### ✨ Features
