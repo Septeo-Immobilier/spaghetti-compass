@@ -2,6 +2,8 @@
  * Types et interfaces pour les providers LSP
  */
 
+export type { LspProviderStatus } from './availability.js';
+
 /**
  * Résultat de la recherche de définition
  */

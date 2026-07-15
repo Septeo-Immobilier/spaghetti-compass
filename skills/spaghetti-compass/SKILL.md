@@ -22,6 +22,41 @@ Deux commandes :
 
 Toutes les sorties exposent des chemins **cliquables** au format `chemin:ligne:colonne` (Ctrl+Click dans VSCode/Cursor). Ajouter `--json` pour toute exploitation programmatique.
 
+## Prérequis
+
+Spaghetti-compass fonctionne même sans LSP externe : il retombe alors sur ses parsers et résolveurs internes. En revanche, il est **plus précis** quand il a accès aux serveurs de langage dans le `PATH` de l'environnement qui exécute la commande, surtout pour les définitions exactes et les graphes d'appels.
+
+À retenir :
+
+- TypeScript / JavaScript : le Language Service TypeScript est embarqué via les dépendances npm de `spaghetti-compass`.
+- PHP : installer `intelephense` pour une meilleure résolution des symboles.
+- Python : installer `pyright` / `pyright-langserver` pour une meilleure résolution des symboles.
+- Go : installer `gopls` pour les positions exactes, notamment dans les packages multi-fichiers.
+
+Spaghetti-compass ne se connecte pas au LSP déjà lancé par VSCode/Cursor : il démarre ses propres processus LSP quand les exécutables sont disponibles. Donc privilégier l'exécution sur l'hôte quand l'hôte possède les bons LSP ; en Docker, il faut que l'image les contienne aussi.
+
+**Diagnostic rapide du `PATH`** — Avant une analyse précis-sensible, vérifier la disponibilité des LSPs :
+
+```bash
+spaghetti-compass doctor
+```
+
+Cela affichera `OK` pour tous les outils disponibles et `MISS` pour ceux à installer. En cas de `MISS` sur PHP, Python, ou Go, les analyses fonctionneront quand même mais avec une précision réduite.
+
+Commande manuelle (si `doctor` n'est pas disponible) :
+
+```bash
+for bin in spaghetti-compass intelephense pyright-langserver gopls; do
+  if command -v "$bin" >/dev/null 2>&1; then
+    printf "OK   %-20s %s\n" "$bin" "$(command -v "$bin")"
+  else
+    printf "MISS %-20s\n" "$bin"
+  fi
+done
+```
+
+Pour Python, `npx pyright-langserver --version` peut aussi suffire si Pyright est disponible via npm local/global/cache, mais un binaire `pyright-langserver` visible dans le `PATH` reste le signal le plus simple à vérifier.
+
 ## Exécution (hôte vs Docker)
 
 **Priorité hôte** : si **spaghetti-compass** est installé (global ou `npx`), l'utiliser sur la machine hôte — le **LSP** déjà présent au niveau du projet améliore la résolution. **Sinon** (CLI absent ou règle docker-execution), utiliser Docker.

@@ -4,12 +4,12 @@
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { execSync } from 'node:child_process';
 import type { LspProvider, DefinitionResult } from './types.js';
 import { LspProcessManager } from './process-manager.js';
 import { uriToPath, type LspLocation } from './json-rpc.js';
 import { ComposerResolver } from '../composer.js';
 import { findPhpConstructorLine } from './php-constructor.js';
+import { checkLspForLanguage } from './availability.js';
 
 /**
  * Provider LSP pour PHP utilisant Intelephense
@@ -32,18 +32,11 @@ export class PhpLspProvider implements LspProvider {
   }
 
   async isAvailable(): Promise<boolean> {
-    try {
-      // Vérifier si intelephense est installé globalement
-      execSync(process.platform === 'win32' ? 'where intelephense' : 'which intelephense', {
-        stdio: 'pipe',
-      });
-      return true;
-    } catch {
-      if (this.debug) {
-        console.warn('[LSP] Intelephense not found. Install with: npm install -g intelephense');
-      }
-      return false;
+    const availability = checkLspForLanguage('php');
+    if (!availability.available && this.debug) {
+      console.warn(`[LSP] ${availability.command} not found. Install with: ${availability.installHint}`);
     }
+    return availability.available;
   }
 
   async initialize(projectRoot: string, _configPath?: string): Promise<void> {

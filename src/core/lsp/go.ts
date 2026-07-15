@@ -4,10 +4,10 @@
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { execSync } from 'node:child_process';
 import type { LspProvider, DefinitionResult } from './types.js';
 import { LspProcessManager } from './process-manager.js';
 import { uriToPath, type LspLocation } from './json-rpc.js';
+import { checkLspForLanguage } from './availability.js';
 
 /**
  * Provider LSP pour Go utilisant gopls
@@ -30,25 +30,11 @@ export class GoLspProvider implements LspProvider {
   }
 
   async isAvailable(): Promise<boolean> {
-    try {
-      execSync(`${this.goplsPath} version`, { stdio: 'pipe' });
-      return true;
-    } catch {
-      try {
-        execSync(
-          process.platform === 'win32'
-            ? `where ${this.goplsPath}`
-            : `which ${this.goplsPath}`,
-          { stdio: 'pipe' }
-        );
-        return true;
-      } catch {
-        if (this.debug) {
-          console.warn('[LSP] gopls not found. Install with: go install golang.org/x/tools/gopls@latest');
-        }
-        return false;
-      }
+    const availability = checkLspForLanguage('go');
+    if (!availability.available && this.debug) {
+      console.warn(`[LSP] ${availability.command} not found. Install with: ${availability.installHint}`);
     }
+    return availability.available;
   }
 
   async initialize(projectRoot: string, _configPath?: string): Promise<void> {

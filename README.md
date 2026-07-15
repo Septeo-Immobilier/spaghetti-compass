@@ -263,6 +263,56 @@ spaghetti-compass explore src/main.ts -c src/ --hyperlinks
 
 When hyperlinks are enabled, file paths become clickable links using the OSC 8 escape sequence. This works in terminals that support OSC 8 hyperlinks (iTerm2, Windows Terminal, some Linux terminals).
 
+## LSP Availability and Degraded Mode
+
+`spaghetti-compass` uses a hybrid resolution architecture: TypeScript/JavaScript resolution is bundled (built-in), while PHP, Python, and Go resolution is *enhanced* when an optional external LSP tool is present in your PATH:
+
+- **PHP**: `intelephense` (detect with `npm install -g intelephense`)
+- **Python**: `pyright-langserver` (detect with `npm install -g pyright`)
+- **Go**: `gopls` (detect with `go install golang.org/x/tools/gopls@latest`)
+
+When an optional LSP is **missing**, `spaghetti-compass` **continues to work** using a parser-only fallback, but **symbol resolution may be less precise**. You will see a warning on stderr letting you know:
+
+```bash
+spaghetti-compass explore src/api/handler.php
+# Warning: PHP LSP unavailable: `intelephense` was not found in PATH. 
+# Continuing with parser fallback; symbol resolution may be less precise.
+```
+
+### Diagnose your environment with `doctor`
+
+To see a summary of all available tools and LSPs, run:
+
+```bash
+spaghetti-compass doctor
+
+# Output:
+# Spaghetti Compass environment
+#
+# OK   spaghetti-compass     /usr/local/bin/spaghetti-compass
+# OK   node                  /usr/local/bin/node
+# OK   TypeScript            bundled
+# MISS intelephense          install with: npm install -g intelephense
+# OK   pyright-langserver    /usr/local/bin/pyright-langserver
+# OK   gopls                 /Users/me/go/bin/gopls
+#
+# LSP note: spaghetti-compass starts its own LSP processes when available; 
+# it does not reuse VSCode/Cursor LSP sessions.
+```
+
+For JSON output (to parse in scripts):
+
+```bash
+spaghetti-compass doctor --json
+```
+
+**Key points:**
+
+- External LSPs are **optional** — the tool always works, with or without them.
+- Missing LSP warnings appear on **stderr only**, never in JSON output on **stdout** (so they don't break tooling or CI).
+- Exit codes are unaffected by LSP availability.
+- For **maximum precision** on Python, PHP, or Go projects, install the matching LSP.
+
 ## Reverse impact analysis (`impact`)
 
 `explore` answers *"what does this file depend on?"* (forward). `impact` answers the opposite,

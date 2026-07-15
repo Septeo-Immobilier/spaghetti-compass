@@ -14,6 +14,8 @@ import { formatJson } from '../output/json.js';
 import { formatImpactText, formatImpactJson } from '../output/impact.js';
 import { loadDefaultRoutePatterns } from '../config/route-patterns.js';
 import { TsConfigResolver } from '../core/tsconfig.js';
+import { buildDoctorReport, getDoctorExitCode } from './doctor.js';
+import { formatDoctorText, formatDoctorJson } from '../output/doctor.js';
 
 // Exit codes
 const EXIT_SUCCESS = 0;
@@ -177,7 +179,10 @@ program
         if (discoveredTsConfig) {
           tsConfigPath = discoveredTsConfig;
         } else {
-          console.log('ℹ️  No tsconfig.json found, alias resolution disabled');
+          // Under --json, send this to stderr to keep stdout clean (FR-005)
+          if (!options.json) {
+            console.log('ℹ️  No tsconfig.json found, alias resolution disabled');
+          }
         }
       }
 
@@ -235,6 +240,16 @@ program
         maxDepth,
         sameFileOnly: options.sameFileOnly,
       });
+
+      // Emit degraded-mode warnings for unavailable LSPs (FR-001/FR-008)
+      // Only emit once per unavailable provider per invocation
+      const emittedWarnings = new Set<string>();
+      for (const status of analyzer.getLspStatuses()) {
+        if (status.degraded && status.message && !emittedWarnings.has(status.language)) {
+          console.error(status.message);
+          emittedWarnings.add(status.language);
+        }
+      }
 
       // Vérifier si une fonction a été demandée mais non trouvée
       if (functionName && !graph.nodes.some((n) => n.name === functionName && n.type === 'function')) {
@@ -362,6 +377,28 @@ program
       }
 
       process.exit(EXIT_SUCCESS);
+    } catch (error) {
+      console.error(`Error: ${error instanceof Error ? error.message : String(error)}`);
+      process.exit(EXIT_PARSE_ERROR);
+    }
+  });
+
+program
+  .command('doctor')
+  .description('Diagnose environment: check availability of Node, spaghetti-compass, and LSP tools')
+  .option('-j, --json', 'Output as JSON', false)
+  .action(async (options) => {
+    try {
+      const report = buildDoctorReport();
+
+      if (options.json) {
+        console.log(formatDoctorJson(report));
+      } else {
+        console.log(formatDoctorText(report));
+      }
+
+      const exitCode = getDoctorExitCode(report);
+      process.exit(exitCode);
     } catch (error) {
       console.error(`Error: ${error instanceof Error ? error.message : String(error)}`);
       process.exit(EXIT_PARSE_ERROR);
