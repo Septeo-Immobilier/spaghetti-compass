@@ -9,6 +9,7 @@ import { PhpLspProvider } from './php.js';
 import { PythonLspProvider } from './python.js';
 import { GoLspProvider } from './go.js';
 import { NullLspProvider } from './null.js';
+import { degradedMessage, type LspProviderStatus } from './availability.js';
 
 /**
  * Mapping des extensions vers les types de providers
@@ -34,6 +35,8 @@ export class LspProviderFactory {
   private providers: Map<string, LspProvider> = new Map();
   /** Configuration globale */
   private config: LspConfig;
+  /** Track LSP provider status (available/degraded) per provider type for warnings */
+  private statuses: Map<string, LspProviderStatus> = new Map();
 
   constructor(config: LspConfig = {}) {
     this.config = config;
@@ -68,12 +71,40 @@ export class LspProviderFactory {
     // Vérifier si le provider est disponible
     const available = await provider.isAvailable();
     if (!available) {
+      // Record degraded status for optional LSPs (FR-001/008)
+      if (providerType === 'php' || providerType === 'python' || providerType === 'go') {
+        this.statuses.set(providerType, {
+          language: providerType as 'php' | 'python' | 'go',
+          providerName: provider.name,
+          available: false,
+          degraded: true,
+          message: degradedMessage(providerType as 'php' | 'python' | 'go'),
+        });
+      }
+      
       // Fallback vers NullProvider avec warning
       if (this.config.debug) {
         console.warn(`[LSP] Provider ${providerType} not available, using fallback`);
       }
       provider = new NullLspProvider();
     } else {
+      // Record available status (not degraded)
+      if (providerType === 'typescript') {
+        this.statuses.set(providerType, {
+          language: 'typescript',
+          providerName: provider.name,
+          available: true,
+          degraded: false,
+        });
+      } else if (providerType === 'php' || providerType === 'python' || providerType === 'go') {
+        this.statuses.set(providerType, {
+          language: providerType as 'php' | 'python' | 'go',
+          providerName: provider.name,
+          available: true,
+          degraded: false,
+        });
+      }
+      
       // Initialiser le provider
       await provider.initialize(projectRoot, configPath);
     }
@@ -127,5 +158,16 @@ export class LspProviderFactory {
     );
     await Promise.all(disposePromises);
     this.providers.clear();
+  }
+
+  /**
+   * Returns collected LSP provider statuses for degraded warnings (FR-008).
+   * Used by CLI to emit stderr warnings for unavailable providers.
+   *
+   * @returns Array of LspProviderStatus (one per resolved provider type)
+   * @see {@link LspProviderStatus}
+   */
+  getStatuses(): LspProviderStatus[] {
+    return Array.from(this.statuses.values());
   }
 }

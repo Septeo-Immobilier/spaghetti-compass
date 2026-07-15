@@ -3,7 +3,7 @@
  */
 
 // Types
-export type { LspProvider, DefinitionResult, LspConfig } from './types.js';
+export type { LspProvider, DefinitionResult, LspConfig, LspProviderStatus } from './types.js';
 
 // JSON-RPC
 export type {

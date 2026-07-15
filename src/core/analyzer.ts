@@ -17,7 +17,7 @@ import { DependencyGraphBuilder } from './graph.js';
 import { PathResolver } from './resolver.js';
 import { ParserFactory } from '../parser/index.js';
 import { TsConfigResolver } from './tsconfig.js';
-import { LspProviderFactory, type LspProvider } from './lsp/index.js';
+import { LspProviderFactory, type LspProvider, type LspProviderStatus } from './lsp/index.js';
 import { ComposerResolver } from './composer.js';
 import { findPhpConstructorLine } from './lsp/php-constructor.js';
 import type { ParseResult } from '../types/index.js';
@@ -903,5 +903,16 @@ export class Analyzer {
    */
   async dispose(): Promise<void> {
     await this.lspFactory.disposeAll();
+  }
+
+  /**
+   * Returns collected LSP provider statuses for degraded-mode warnings.
+   * Called by the CLI after analyze() to emit warnings to stderr (FR-001/008).
+   *
+   * @returns Array of LspProviderStatus (one per resolved provider type)
+   * @see {@link LspProviderStatus}
+   */
+  getLspStatuses(): LspProviderStatus[] {
+    return this.lspFactory.getStatuses();
   }
 }

@@ -4,10 +4,10 @@
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { execSync } from 'node:child_process';
 import type { LspProvider, DefinitionResult } from './types.js';
 import { LspProcessManager } from './process-manager.js';
 import { uriToPath, type LspLocation } from './json-rpc.js';
+import { checkLspForLanguage } from './availability.js';
 
 /**
  * Provider LSP pour Python utilisant Pyright
@@ -28,24 +28,23 @@ export class PythonLspProvider implements LspProvider {
   }
 
   async isAvailable(): Promise<boolean> {
+    // First check if the direct binary is in PATH (for doctor diagnostics - FR-017)
+    const availability = checkLspForLanguage('python');
+    
+    if (availability.available) {
+      return true;
+    }
+
+    // Also accept npx-based resolution (tolerance for actual provider resolution)
     try {
-      // Essayer de trouver pyright-langserver
+      const execSync = await import('node:child_process').then(m => m.execSync);
       execSync('npx pyright-langserver --version', { stdio: 'pipe' });
       return true;
     } catch {
-      try {
-        // Essayer avec which/where
-        execSync(
-          process.platform === 'win32' ? 'where pyright-langserver' : 'which pyright-langserver',
-          { stdio: 'pipe' }
-        );
-        return true;
-      } catch {
-        if (this.debug) {
-          console.warn('[LSP] Pyright not found. Install with: npm install -g pyright');
-        }
-        return false;
+      if (this.debug) {
+        console.warn(`[LSP] ${availability.command} not found. Install with: ${availability.installHint}`);
       }
+      return false;
     }
   }
 
