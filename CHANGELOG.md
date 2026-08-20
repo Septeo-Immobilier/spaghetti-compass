@@ -1,3 +1,9 @@
+## [1.0.3](https://github.com/Septeo-Immobilier/spaghetti-compass/compare/v1.0.2...v1.0.3) (2026-08-20)
+
+### 🐛 Bug Fixes
+
+* **build:** normalize the bin path in package.json ([e1d691b](https://github.com/Septeo-Immobilier/spaghetti-compass/commit/e1d691b4f52b1bcf28b5b951a4e09fcb3326cbd7))
+
 ## [1.0.2](https://github.com/Septeo-Immobilier/spaghetti-compass/compare/v1.0.1...v1.0.2) (2026-08-20)
 
 ### 🐛 Bug Fixes
