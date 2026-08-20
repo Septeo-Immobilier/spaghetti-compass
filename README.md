@@ -173,8 +173,9 @@ external modules (`github.com/...`) are shown as third-party. `cmd/**/main.go` a
 are treated as routes/entry points by default (see [`config/route-patterns.txt`](config/route-patterns.txt)).
 
 > **Optional `gopls`**: install it (`go install golang.org/x/tools/gopls@latest`) for exact
-> symbol positions in multi-file packages. Without it, analysis stays file/package-level and
-> never fails. Multi-module repos use the `go.mod` nearest the source file.
+> symbol positions in multi-file packages. Go results are always package-granular — every
+> non-test file of the target's package shares one dependents set — whether or not `gopls`
+> is installed. Multi-module repos use the `go.mod` nearest the source file.
 
 ## Usage
 
@@ -363,8 +364,8 @@ route R; which **other** routes also go through A and must be re-checked?"*.
 | `--absolute-paths` | | Absolute instead of relative paths | `false` |
 | `--no-links` | | Disable `path:line:column` format | |
 
-The JSON output exposes `target`, `scannedFiles`, `directDependents`, `dependents`, and `routes`
-(each with a `chain` array from route to target).
+The JSON output exposes `target`, `scannedFiles`, `directDependents`, `dependents`, `routes`
+(each with a `chain` array from route to target), `granularity`, and `granularityNote`.
 
 ### Customizing what counts as a "route"
 
@@ -450,6 +451,8 @@ spaghetti-compass explore cmd/service/main.go -c .
 **Known limitations:** the no-`gopls` fallback is deterministic but not a compiler — it does not
 perform full interprocedural resolution, so calls dispatched through interfaces or injected
 dependencies may not link to a concrete implementation. Install `gopls` for higher precision.
+Also, `impact` results for Go targets are package-granular in every case — every non-test file
+of the target's package shares one dependents set, regardless of `gopls` availability.
 
 ### PHP PSR-4 Support
 

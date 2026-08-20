@@ -12,8 +12,11 @@ Mini Go module for testing spaghetti-compass with gopls.
 ```
 go/
 ├── go.mod
-├── cmd/service/
-│   └── main.go                              # Entry point — wires handlers + use cases
+├── cmd/
+│   ├── service/
+│   │   └── main.go                          # Entry point — wires handlers + use cases
+│   └── notifier/
+│       └── main.go                          # Entry point - calls notify.NewSender (route pattern **/cmd/**/main.go)
 └── internal/
     ├── application/usecases/
     │   └── receive_invoice.go               # ReceiveInvoice use case (Execute method)
@@ -21,6 +24,9 @@ go/
     │   └── entity.go                        # Invoice aggregate + NewInvoice constructor
     ├── handlers/
     │   └── invoice_handler.go               # HTTP handler (route pattern **/*handler.go)
+    ├── notify/
+    │   ├── aaa_marker.go                    # Sorts first alphabetically; referenced by nothing
+    │   └── sender.go                        # Sorts second; holds the Sender constructor cmd/notifier calls
     └── ports/
         └── repository.go                    # InvoiceRepository interface
 ```
@@ -56,4 +62,25 @@ entity.go
   <- internal/application/usecases/receive_invoice.go
      <- internal/handlers/invoice_handler.go
         <- cmd/service/main.go
+```
+
+### `internal/notify` - package-vs-file asymmetry fixture
+
+`internal/notify` has two non-test files: `aaa_marker.go` (sorts first alphabetically,
+declares a constant referenced by nothing) and `sender.go` (sorts second, declares the
+`Sender` constructor that `cmd/notifier/main.go` calls). Both files belong to the same
+Go package, so both must report the same dependents.
+
+Before the truthfulness fix, import resolution attributed the whole package's reverse
+edge to whichever file sorted first, producing an asymmetric result:
+```
+impact fixtures/go/internal/notify/sender.go -c fixtures/go       # 0 dependent(s), 0 route(s)
+impact fixtures/go/internal/notify/aaa_marker.go -c fixtures/go   # 1 dependent(s), 1 route(s)
+```
+
+After the fix, both files report the same non-empty set, both containing
+`cmd/notifier/main.go`:
+```
+impact fixtures/go/internal/notify/sender.go -c fixtures/go
+impact fixtures/go/internal/notify/aaa_marker.go -c fixtures/go
 ```
