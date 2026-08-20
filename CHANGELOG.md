@@ -1,3 +1,14 @@
+## [1.1.0](https://github.com/Septeo-Immobilier/spaghetti-compass/compare/v1.0.3...v1.1.0) (2026-08-20)
+
+### ✨ Features
+
+* **impact:** make Go impact analysis package-granular ([9713caa](https://github.com/Septeo-Immobilier/spaghetti-compass/commit/9713caacf1e6352e8f30e56f7c9e2829ba15ac69))
+
+### 📚 Documentation
+
+* **spec:** add spec-kit artifacts for go-package-impact-truthfulness ([e77f66b](https://github.com/Septeo-Immobilier/spaghetti-compass/commit/e77f66b0a35f76652dad02e8a07d9269fa59009d))
+* state that Go impact is package-granular ([992e40a](https://github.com/Septeo-Immobilier/spaghetti-compass/commit/992e40afb9e02de76ca7bebe7b5d10886d84edac))
+
 ## [1.0.3](https://github.com/Septeo-Immobilier/spaghetti-compass/compare/v1.0.2...v1.0.3) (2026-08-20)
 
 ### 🐛 Bug Fixes
