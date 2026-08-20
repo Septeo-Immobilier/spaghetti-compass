@@ -1,5 +1,5 @@
 /**
- * Résolution des chemins et classification des modules
+ * Path resolution and module location classification
  */
 
 import * as path from 'node:path';
@@ -10,11 +10,12 @@ import { ComposerResolver } from './composer.js';
 import { GoModResolver } from './go-mod.js';
 
 /**
- * Résout les chemins de modules et classifie leur localisation
+ * Resolves module paths and classifies their location
  */
 export class PathResolver {
   private context: ContextInfo;
   private resolvedCache: Map<string, string | null> = new Map();
+  private resolvedAllCache: Map<string, string[]> = new Map();
   private tsConfigResolver: TsConfigResolver | null = null;
   private composerResolver: ComposerResolver;
   private goModResolver: GoModResolver;
@@ -29,16 +30,16 @@ export class PathResolver {
   }
 
   /**
-   * Vérifie si un specifier est un package npm (bare import).
-   * Quand fromFile est un fichier .go, les imports Go ne sont jamais des packages npm.
+   * Checks whether a specifier is an npm package (bare import).
+   * When fromFile is a .go file, Go imports are never npm packages.
    */
   isNpmPackage(moduleSpecifier: string, fromFile?: string): boolean {
-    // Les imports Go (fichiers .go) ne sont jamais des packages npm
+    // Go imports (.go files) are never npm packages
     if (fromFile && path.extname(fromFile).toLowerCase() === '.go') {
       return false;
     }
 
-    // Bare imports: ne commencent pas par '.', '/', ou un chemin Windows
+    // Bare imports: do not start with '.', '/', or a Windows path
     if (
       moduleSpecifier.startsWith('.') ||
       moduleSpecifier.startsWith('/') ||
@@ -47,21 +48,21 @@ export class PathResolver {
       return false;
     }
 
-    // Si c'est un alias TypeScript, ce n'est PAS un package npm
+    // If it's a TypeScript alias, it is NOT an npm package
     if (this.tsConfigResolver?.matchesAlias(moduleSpecifier)) {
       return false;
     }
 
-    // Packages scoped (@org/package) ou packages simples
+    // Scoped packages (@org/package) or plain packages
     return /^(@[a-z0-9-~][a-z0-9-._~]*\/)?[a-z0-9-~][a-z0-9-._~]*/.test(moduleSpecifier);
   }
 
   /**
-   * Extrait le nom du package npm depuis un specifier
+   * Extracts the npm package name from a specifier
    */
   getPackageName(moduleSpecifier: string): string {
-    // Pour @scope/package/path -> @scope/package
-    // Pour package/path -> package
+    // For @scope/package/path -> @scope/package
+    // For package/path -> package
     const parts = moduleSpecifier.split('/');
     if (moduleSpecifier.startsWith('@')) {
       return parts.slice(0, 2).join('/');
@@ -70,7 +71,7 @@ export class PathResolver {
   }
 
   /**
-   * Résout un chemin de module relatif à un fichier source
+   * Resolves a module path relative to a source file
    */
   resolve(moduleSpecifier: string, fromFile: string): string | null {
     const cacheKey = `${fromFile}:${moduleSpecifier}`;
@@ -80,7 +81,7 @@ export class PathResolver {
 
     let resolved: string | null = null;
 
-    // Essayer d'abord la résolution via alias TypeScript
+    // Try TypeScript alias resolution first
     if (this.tsConfigResolver) {
       const aliasResult = this.tsConfigResolver.resolveAlias(moduleSpecifier, fromFile);
       if (aliasResult.resolved) {
@@ -90,50 +91,50 @@ export class PathResolver {
       }
     }
 
-    // Détecter le langage du fichier source pour éviter qu'une stratégie
-    // de résolution spécifique à un langage n'intercepte les imports d'un autre.
-    // (ex: `./foo` ou `../bar` en TS/JS ne doivent PAS passer par la résolution PHP,
-    //  qui ne tente pas les extensions .ts/.tsx ni l'extensionless.)
+    // Detect the source file's language to avoid a language-specific
+    // resolution strategy intercepting another language's imports.
+    // (e.g. `./foo` or `../bar` in TS/JS must NOT go through PHP resolution,
+    //  which does not try .ts/.tsx extensions nor extensionless files.)
     const fromExt = path.extname(fromFile).toLowerCase();
     const isPythonSource = fromExt === '.py' || fromExt === '.pyi';
     const isPhpSource = fromExt === '.php';
     const isGoSource = fromExt === '.go';
 
-    // Gérer les imports relatifs Python (.module, ..module, etc.)
+    // Handle Python relative imports (.module, ..module, etc.)
     if (isPythonSource && this.isPythonRelativeImport(moduleSpecifier)) {
       resolved = this.resolvePythonRelativeImport(moduleSpecifier, fromFile);
       this.resolvedCache.set(cacheKey, resolved);
       return resolved;
     }
 
-    // Gérer les chemins relatifs PHP avec __DIR__ (/../path/to/file.php)
+    // Handle PHP relative paths with __DIR__ (/../path/to/file.php)
     if (isPhpSource && this.isPhpRelativePath(moduleSpecifier)) {
       resolved = this.resolvePhpRelativePath(moduleSpecifier, fromFile);
       this.resolvedCache.set(cacheKey, resolved);
       return resolved;
     }
 
-    // Gérer les namespaces PHP (App\Models\User, etc.)
+    // Handle PHP namespaces (App\Models\User, etc.)
     if (isPhpSource && this.isPhpNamespace(moduleSpecifier)) {
       resolved = this.resolvePhpNamespace(moduleSpecifier, fromFile);
       this.resolvedCache.set(cacheKey, resolved);
       return resolved;
     }
 
-    // Gérer les imports Go — ne jamais laisser tomber sur la résolution TS/npm
+    // Handle Go imports — never fall through to TS/npm resolution
     if (isGoSource) {
-      // resolveImport retourne un chemin absolu si c'est un import interne,
-      // null pour la stdlib et les modules tiers.
+      // resolveImport returns an absolute path for an internal import,
+      // null for stdlib and third-party modules.
       resolved = this.goModResolver.resolveImport(moduleSpecifier, fromFile);
       this.resolvedCache.set(cacheKey, resolved);
       return resolved;
     }
 
     if (this.isNpmPackage(moduleSpecifier)) {
-      // Pour les packages npm, on retourne le nom du package
+      // For npm packages, return the package name
       resolved = this.getPackageName(moduleSpecifier);
     } else {
-      // Résolution de chemin relatif
+      // Relative path resolution
       const fromDir = path.dirname(fromFile);
       const candidates = this.getResolutionCandidates(moduleSpecifier, fromDir);
 
@@ -150,22 +151,63 @@ export class PathResolver {
   }
 
   /**
-   * Vérifie si un specifier est un import relatif Python
+   * Resolves a module to **every** file it corresponds to.
+   * For a Go import, a package can group several source files; each of them
+   * must appear as a reverse-edge target so the graph stays truthful
+   * regardless of which file of the package is queried (`resolve()` itself
+   * only returns one representative candidate for the package).
+   * For every other language, falls back to `resolve()`: a single-element
+   * result, or an empty array when `resolve()` returns `null`.
+   */
+  resolveAll(moduleSpecifier: string, fromFile: string): string[] {
+    const cacheKey = `${fromFile}:${moduleSpecifier}`;
+    if (this.resolvedAllCache.has(cacheKey)) {
+      return this.resolvedAllCache.get(cacheKey)!;
+    }
+
+    // TypeScript alias resolution takes priority for every source, mirroring
+    // `resolve()`'s ordering (lines 84-92 above), so the two entry points
+    // never diverge on an aliased specifier.
+    if (this.tsConfigResolver) {
+      const aliasResult = this.tsConfigResolver.resolveAlias(moduleSpecifier, fromFile);
+      if (aliasResult.resolved) {
+        const result = [aliasResult.resolved];
+        this.resolvedAllCache.set(cacheKey, result);
+        return result;
+      }
+    }
+
+    const isGoSource = path.extname(fromFile).toLowerCase() === '.go';
+
+    let result: string[];
+    if (isGoSource) {
+      result = this.goModResolver.resolvePackageFiles(moduleSpecifier, fromFile);
+    } else {
+      const resolved = this.resolve(moduleSpecifier, fromFile);
+      result = resolved ? [resolved] : [];
+    }
+
+    this.resolvedAllCache.set(cacheKey, result);
+    return result;
+  }
+
+  /**
+   * Checks whether a specifier is a Python relative import
    * (.module, ..module, .subpkg.module, etc.)
    */
   private isPythonRelativeImport(moduleSpecifier: string): boolean {
-    // Les imports relatifs Python commencent par un ou plusieurs points
+    // Python relative imports start with one or more dots
     return /^\.+[a-zA-Z_]/.test(moduleSpecifier) || moduleSpecifier === '.';
   }
 
   /**
-   * Résout un import relatif Python vers un chemin de fichier
+   * Resolves a Python relative import to a file path
    * .module -> ./module.py
    * ..module -> ../module.py
    * .subpkg.module -> ./subpkg/module.py
    */
   private resolvePythonRelativeImport(moduleSpecifier: string, fromFile: string): string | null {
-    // Compter les points au début pour déterminer le niveau de remontée
+    // Count the leading dots to determine how far up to walk
     const dotMatch = moduleSpecifier.match(/^(\.+)/);
     if (!dotMatch) {
       return null;
@@ -175,23 +217,23 @@ export class PathResolver {
     const dotCount = dots.length;
     const modulePath = moduleSpecifier.slice(dotCount);
 
-    // Partir du répertoire du fichier source
+    // Start from the source file's directory
     let fromDir = path.dirname(fromFile);
 
-    // Remonter d'un niveau pour chaque point supplémentaire au-delà du premier
-    // . = même répertoire (package courant)
-    // .. = répertoire parent
-    // ... = grand-parent, etc.
+    // Walk up one level for each extra dot beyond the first
+    // . = same directory (current package)
+    // .. = parent directory
+    // ... = grandparent, etc.
     for (let i = 1; i < dotCount; i++) {
       fromDir = path.dirname(fromDir);
     }
 
-    // Convertir le chemin de module Python en chemin de fichier
+    // Convert the Python module path into a file path
     // .services.user_service -> ./services/user_service.py
     const pathParts = modulePath.split('.');
     const relativePath = pathParts.join(path.sep);
 
-    // Candidats de résolution pour Python
+    // Resolution candidates for Python
     const candidates = [
       path.join(fromDir, relativePath + '.py'),
       path.join(fromDir, relativePath + '.pyi'),
@@ -209,19 +251,19 @@ export class PathResolver {
   }
 
   /**
-   * Vérifie si un specifier est un chemin relatif PHP
-   * Inclut les chemins comme /../path (utilisés avec __DIR__)
+   * Checks whether a specifier is a PHP relative path
+   * Includes paths like /../path (used with __DIR__)
    */
   private isPhpRelativePath(moduleSpecifier: string): boolean {
-    // Chemins commençant par ./ ou ../
+    // Paths starting with ./ or ../
     if (moduleSpecifier.startsWith('./') || moduleSpecifier.startsWith('../')) {
       return true;
     }
-    // Chemins commençant par / suivi de .. (comme /../Models/User.php utilisé avec __DIR__)
+    // Paths starting with / followed by .. (like /../Models/User.php used with __DIR__)
     if (moduleSpecifier.startsWith('/..')) {
       return true;
     }
-    // Chemins absolus commençant par / et se terminant par .php
+    // Absolute paths starting with / and ending with .php
     if (moduleSpecifier.startsWith('/') && moduleSpecifier.endsWith('.php')) {
       return true;
     }
@@ -229,39 +271,39 @@ export class PathResolver {
   }
 
   /**
-   * Résout un chemin relatif PHP vers un chemin de fichier absolu
+   * Resolves a PHP relative path to an absolute file path
    * /../Models/User.php -> /absolute/path/to/Models/User.php
    */
   private resolvePhpRelativePath(moduleSpecifier: string, fromFile: string): string | null {
     const fromDir = path.dirname(fromFile);
-    
-    // Les chemins PHP avec __DIR__ comme /../path doivent être traités comme relatifs
-    // path.resolve traite /.. comme un chemin absolu, donc on préfixe avec .
+
+    // PHP paths using __DIR__ like /../path must be treated as relative
+    // path.resolve treats /.. as an absolute path, so we prefix with .
     let normalizedSpec = moduleSpecifier;
     if (moduleSpecifier.startsWith('/')) {
       normalizedSpec = '.' + moduleSpecifier;
     }
-    
-    // Normaliser le chemin (gérer les /../ et /./)
+
+    // Normalize the path (handle /../ and /./)
     const resolvedPath = path.resolve(fromDir, normalizedSpec);
-    
+
     if (fs.existsSync(resolvedPath)) {
       return resolvedPath;
     }
-    
+
     return null;
   }
 
   /**
-   * Vérifie si un specifier est un namespace PHP
-   * Exemples: App\Models\User, Symfony\Component\HttpFoundation\Response
+   * Checks whether a specifier is a PHP namespace
+   * Examples: App\Models\User, Symfony\Component\HttpFoundation\Response
    */
   private isPhpNamespace(moduleSpecifier: string): boolean {
     return ComposerResolver.isPhpNamespace(moduleSpecifier);
   }
 
   /**
-   * Résout un namespace PHP vers un chemin de fichier via composer.json PSR-4
+   * Resolves a PHP namespace to a file path via composer.json PSR-4
    * App\Models\User -> /path/to/src/Models/User.php
    */
   private resolvePhpNamespace(moduleSpecifier: string, fromFile: string): string | null {
@@ -270,20 +312,20 @@ export class PathResolver {
   }
 
   /**
-   * Génère les candidats de résolution pour un module
+   * Generates the resolution candidates for a module
    */
   private getResolutionCandidates(moduleSpecifier: string, fromDir: string): string[] {
     const basePath = path.resolve(fromDir, moduleSpecifier);
     const candidates: string[] = [];
 
-    // Extensions TypeScript et JavaScript
+    // TypeScript and JavaScript extensions
     const extensions = ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs'];
 
-    // Chemin exact
+    // Exact path
     candidates.push(basePath);
 
-    // TypeScript permet d'importer avec .js mais le fichier est .ts
-    // Gérer la résolution style TypeScript
+    // TypeScript allows importing with .js while the file is .ts
+    // Handle TypeScript-style resolution
     if (moduleSpecifier.endsWith('.js')) {
       const withoutJs = basePath.slice(0, -3);
       candidates.push(withoutJs + '.ts');
@@ -296,7 +338,7 @@ export class PathResolver {
       candidates.push(withoutCjs + '.cts');
     }
 
-    // Avec extensions
+    // With extensions
     for (const ext of extensions) {
       candidates.push(basePath + ext);
     }
@@ -310,13 +352,13 @@ export class PathResolver {
   }
 
   /**
-   * Classifie la localisation d'un fichier résolu.
-   * Quand fromFile est un fichier .go, utilise une classification Go-aware:
-   *   - import interne résolu (dans le contexte) -> 'internal'
-   *   - stdlib / module tiers non résolu -> 'third-party'
+   * Classifies the location of a resolved file.
+   * When fromFile is a .go file, uses Go-aware classification:
+   *   - resolved internal import (within the context) -> 'internal'
+   *   - unresolved stdlib / third-party module -> 'third-party'
    */
   classifyLocation(resolvedPath: string | null, moduleSpecifier: string, fromFile?: string): NodeLocation {
-    // Classification Go-aware
+    // Go-aware classification
     if (fromFile && path.extname(fromFile).toLowerCase() === '.go') {
       if (resolvedPath) {
         const normalizedResolved = path.resolve(resolvedPath);
@@ -327,49 +369,49 @@ export class PathResolver {
           return 'internal';
         }
       }
-      // Stdlib ou module tiers (resolvedPath est null) -> third-party
+      // Stdlib or third-party module (resolvedPath is null) -> third-party
       return 'third-party';
     }
 
-    // Package npm -> third-party
+    // npm package -> third-party
     if (this.isNpmPackage(moduleSpecifier)) {
       return 'third-party';
     }
 
-    // Non résolu -> on considère third-party par défaut
+    // Unresolved -> default to third-party
     if (!resolvedPath) {
       return 'third-party';
     }
 
-    // Normaliser les chemins pour comparaison
+    // Normalize paths for comparison
     const normalizedResolved = path.resolve(resolvedPath);
 
-    // Utiliser projectRoot si disponible, sinon rootPath
+    // Use projectRoot if available, otherwise rootPath
     const projectRoot = this.context.projectRoot || this.context.rootPath;
     const normalizedContext = path.resolve(projectRoot);
 
-    // Dans node_modules -> third-party
+    // Inside node_modules -> third-party
     if (normalizedResolved.includes('node_modules')) {
       return 'third-party';
     }
 
-    // Dans vendor/ (PHP Composer) -> third-party
+    // Inside vendor/ (PHP Composer) -> third-party
     if (normalizedResolved.includes(path.sep + 'vendor' + path.sep) ||
         normalizedResolved.includes('/vendor/')) {
       return 'third-party';
     }
 
-    // Dans le contexte -> internal
+    // Inside the context -> internal
     if (normalizedResolved.startsWith(normalizedContext + path.sep)) {
       return 'internal';
     }
 
-    // Hors contexte mais dans le projet -> external
+    // Outside the context but within the project -> external
     return 'external';
   }
 
   /**
-   * Calcule le chemin relatif au contexte
+   * Computes the path relative to the context
    */
   getRelativePath(absolutePath: string): string {
     const contextRoot = this.context.relativeTo || this.context.rootPath;
@@ -377,19 +419,19 @@ export class PathResolver {
   }
 
   /**
-   * Vérifie si un fichier correspond aux patterns include/exclude
+   * Checks whether a file matches the include/exclude patterns
    */
   matchesPatterns(filePath: string): boolean {
     const relativePath = this.getRelativePath(filePath);
 
-    // Vérifier les patterns d'exclusion
+    // Check exclude patterns
     for (const pattern of this.context.excludePatterns) {
       if (this.matchGlob(relativePath, pattern)) {
         return false;
       }
     }
 
-    // Vérifier les patterns d'inclusion
+    // Check include patterns
     if (this.context.includePatterns.length === 0) {
       return true;
     }
@@ -404,10 +446,10 @@ export class PathResolver {
   }
 
   /**
-   * Matching glob simplifié
+   * Simplified glob matching
    */
   private matchGlob(filePath: string, pattern: string): boolean {
-    // Convertir le glob en regex
+    // Convert the glob into a regex
     const regexPattern = pattern
       .replace(/\*\*/g, '{{GLOBSTAR}}')
       .replace(/\*/g, '[^/]*')

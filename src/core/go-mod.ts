@@ -1,44 +1,44 @@
 /**
- * GoModResolver - Resolution des imports Go via go.mod
+ * GoModResolver - Resolution of Go imports via go.mod
  *
- * Fournit une resolution deterministe et sans reseau des imports internes Go
- * en parcourant l'arborescence pour trouver le go.mod le plus proche.
+ * Provides deterministic, network-free resolution of internal Go imports
+ * by walking up the directory tree to find the nearest go.mod.
  */
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
 /**
- * Informations extraites d'un fichier go.mod.
+ * Information extracted from a go.mod file.
  */
 export interface GoModuleInfo {
-  /** Chemin du module tel que declare dans la ligne `module <path>` */
+  /** Module path as declared on the `module <path>` line */
   modulePath: string;
-  /** Chemin absolu du repertoire contenant le go.mod */
+  /** Absolute path of the directory containing the go.mod */
   moduleRoot: string;
-  /** Version Go de la ligne `go <version>`, ou null si absente */
+  /** Go version from the `go <version>` line, or null if absent */
   goVersion: string | null;
-  /** Chemin absolu vers le fichier go.mod */
+  /** Absolute path to the go.mod file */
   filePath: string;
 }
 
 /**
- * Resout les imports Go internes vers des chemins de fichiers en utilisant
- * la declaration de module du go.mod le plus proche.
+ * Resolves internal Go imports to file paths using the module declaration
+ * of the nearest go.mod.
  */
 export class GoModResolver {
-  /** Cache des modules Go par repertoire (absolu) */
+  /** Cache of Go modules by directory (absolute) */
   private moduleCache: Map<string, GoModuleInfo | null> = new Map();
 
-  /** Cache des resolutions import -> fichier: cle = moduleRoot + '\0' + importPath */
-  private importCache: Map<string, string | null> = new Map();
+  /** Cache of import -> every file of the package: key = moduleRoot + '\0' + importPath */
+  private packageFilesCache: Map<string, string[]> = new Map();
 
   /**
-   * Trouve le go.mod le plus proche en remontant depuis le fichier donne.
-   * Strategie "nearest wins" pour les monorepos avec plusieurs go.mod.
+   * Finds the nearest go.mod by walking up from the given file.
+   * "Nearest wins" strategy for monorepos with several go.mod files.
    *
-   * @param fromFile Chemin absolu vers le fichier source .go
-   * @returns Informations du module le plus proche, ou null si aucun go.mod trouve
+   * @param fromFile Absolute path to the .go source file
+   * @returns Information of the nearest module, or null if none found
    */
   findModule(fromFile: string): GoModuleInfo | null {
     let currentDir: string;
@@ -51,10 +51,10 @@ export class GoModResolver {
 
     const root = path.parse(currentDir).root;
 
-    // Remonte jusqu'a la racine du systeme de fichiers
+    // Walk up to the filesystem root
     let dir = currentDir;
     while (true) {
-      // Verifier le cache par repertoire
+      // Check the per-directory cache
       if (this.moduleCache.has(dir)) {
         return this.moduleCache.get(dir) ?? null;
       }
@@ -62,20 +62,20 @@ export class GoModResolver {
       const goModPath = path.join(dir, 'go.mod');
       if (fs.existsSync(goModPath)) {
         const info = this._parseGoMod(goModPath, dir);
-        // Mettre en cache pour ce repertoire et tous les sous-repertoires deja traverses
+        // Cache for this directory and every already-walked subdirectory
         this._cacheForPath(currentDir, dir, info);
         return info;
       }
 
       if (dir === root) {
-        // Aucun go.mod trouve jusqu'a la racine
+        // No go.mod found up to the root
         this._cacheForPath(currentDir, dir, null);
         return null;
       }
 
       const parent = path.dirname(dir);
       if (parent === dir) {
-        // Securite: eviter une boucle infinie
+        // Safety: avoid an infinite loop
         this._cacheForPath(currentDir, dir, null);
         return null;
       }
@@ -84,43 +84,59 @@ export class GoModResolver {
   }
 
   /**
-   * Resout un import Go interne vers un chemin de fichier .go representatif.
+   * Resolves an internal Go import to a representative .go file path.
    *
-   * @param importPath Le specifier d'import Go (ex: "github.com/example/app/internal/domain")
-   * @param fromFile Chemin absolu du fichier source qui contient l'import
-   * @returns Chemin absolu vers un fichier .go representatif du package, ou null
+   * @param importPath The Go import specifier (e.g. "github.com/example/app/internal/domain")
+   * @param fromFile Absolute path of the source file containing the import
+   * @returns Absolute path to a representative .go file of the package, or null
    */
   resolveImport(importPath: string, fromFile: string): string | null {
+    return this.resolvePackageFiles(importPath, fromFile)[0] ?? null;
+  }
+
+  /**
+   * Resolves an internal Go import to every .go file of the target package
+   * (non-test files first, falling back to the full set if the package has
+   * none). Unlike `resolveImport()`, which returns only one representative
+   * file, this method returns the whole set of package files: this is what
+   * guarantees that two files of the same package report the same
+   * dependents (FR-001, FR-003, FR-009).
+   *
+   * @param importPath The Go import specifier
+   * @param fromFile Absolute path of the source file containing the import
+   * @returns Absolute paths, sorted, to the package's .go files, or `[]`
+   */
+  resolvePackageFiles(importPath: string, fromFile: string): string[] {
     const moduleInfo = this.findModule(fromFile);
     if (!moduleInfo) {
-      return null;
+      return [];
     }
 
     const cacheKey = `${moduleInfo.moduleRoot}\0${importPath}`;
-    if (this.importCache.has(cacheKey)) {
-      return this.importCache.get(cacheKey) ?? null;
+    if (this.packageFilesCache.has(cacheKey)) {
+      return this.packageFilesCache.get(cacheKey) ?? [];
     }
 
-    const result = this._resolveImportInternal(importPath, moduleInfo);
-    this.importCache.set(cacheKey, result);
+    const result = this._resolvePackageFilesInternal(importPath, moduleInfo);
+    this.packageFilesCache.set(cacheKey, result);
     return result;
   }
 
   /**
-   * Determine si un import Go est issu de la bibliotheque standard.
+   * Determines whether a Go import comes from the standard library.
    *
-   * Heuristique (Decision 3 de research.md): un import est stdlib si le PREMIER
-   * segment de chemin ne contient pas de point.
+   * Heuristic (Decision 3 of research.md): an import is stdlib if its FIRST
+   * path segment contains no dot.
    * - `context`        -> true  (stdlib)
    * - `encoding/json`  -> true  (stdlib)
    * - `net/http`       -> true  (stdlib)
    * - `time`           -> true  (stdlib)
-   * - `github.com/...` -> false (module tiers)
-   * - `golang.org/x/…` -> false (module tiers)
-   * - `go.uber.org/…`  -> false (module tiers)
+   * - `github.com/...` -> false (third-party module)
+   * - `golang.org/x/...` -> false (third-party module)
+   * - `go.uber.org/...`  -> false (third-party module)
    *
-   * @param importPath Le specifier d'import Go
-   * @returns true si c'est un package de la bibliotheque standard
+   * @param importPath The Go import specifier
+   * @returns true if it's a standard library package
    */
   isStandardLibrary(importPath: string): boolean {
     const firstSegment = importPath.split('/')[0];
@@ -128,19 +144,19 @@ export class GoModResolver {
   }
 
   /**
-   * Vide les caches (utile pour les tests).
+   * Clears the caches (useful for tests).
    */
   clearCache(): void {
     this.moduleCache.clear();
-    this.importCache.clear();
+    this.packageFilesCache.clear();
   }
 
   // ---------------------------------------------------------------------------
-  // Methodes privees
+  // Private methods
   // ---------------------------------------------------------------------------
 
   /**
-   * Parse le contenu d'un go.mod et retourne un GoModuleInfo.
+   * Parses the content of a go.mod and returns a GoModuleInfo.
    */
   private _parseGoMod(goModPath: string, moduleRoot: string): GoModuleInfo | null {
     let content: string;
@@ -154,7 +170,7 @@ export class GoModResolver {
     let goVersion: string | null = null;
 
     for (const rawLine of content.split('\n')) {
-      // Supprimer les commentaires de fin de ligne
+      // Strip trailing line comments
       const commentIdx = rawLine.indexOf('//');
       const line = (commentIdx >= 0 ? rawLine.slice(0, commentIdx) : rawLine).trim();
 
@@ -190,8 +206,8 @@ export class GoModResolver {
   }
 
   /**
-   * Remplit le cache pour tous les repertoires depuis `start` jusqu'a `found`
-   * avec la meme valeur, pour eviter de re-parcourir le meme chemin.
+   * Fills the cache for every directory from `start` up to `found`
+   * with the same value, to avoid re-walking the same path.
    */
   private _cacheForPath(
     start: string,
@@ -214,41 +230,45 @@ export class GoModResolver {
   }
 
   /**
-   * Logique interne de resolution d'un import vers un fichier .go.
+   * Internal logic for selecting a package's .go candidates: filters `.go`,
+   * excludes `vendor/`/`.gomodcache/`, prefers non-test files with a
+   * fallback to the full set if the package has none. Shared by
+   * `resolveImport()` (via `resolvePackageFiles()[0]`) and
+   * `resolvePackageFiles()` so the two rules can never diverge.
    */
-  private _resolveImportInternal(
+  private _resolvePackageFilesInternal(
     importPath: string,
     moduleInfo: GoModuleInfo,
-  ): string | null {
+  ): string[] {
     const { modulePath, moduleRoot } = moduleInfo;
 
-    // L'import doit commencer par le module path pour etre interne
+    // The import must start with the module path to be internal
     if (importPath !== modulePath && !importPath.startsWith(modulePath + '/')) {
-      return null;
+      return [];
     }
 
-    // Calculer le chemin relatif depuis la racine du module
+    // Compute the path relative to the module root
     const suffix =
       importPath === modulePath ? '' : importPath.slice(modulePath.length + 1);
 
     const pkgDir = suffix ? path.join(moduleRoot, suffix) : moduleRoot;
 
-    // Verifier que le repertoire existe
+    // Check that the directory exists
     try {
       const stat = fs.statSync(pkgDir);
       if (!stat.isDirectory()) {
-        return null;
+        return [];
       }
     } catch {
-      return null;
+      return [];
     }
 
-    // Lire les fichiers .go dans ce repertoire
+    // Read the .go files in this directory
     let entries: string[];
     try {
       entries = fs.readdirSync(pkgDir);
     } catch {
-      return null;
+      return [];
     }
 
     const goFiles = entries.filter(
@@ -258,23 +278,23 @@ export class GoModResolver {
     );
 
     if (goFiles.length === 0) {
-      return null;
+      return [];
     }
 
-    // Preference: fichier non-test
+    // Preference: non-test files
     const nonTestFiles = goFiles.filter((f) => !f.endsWith('_test.go'));
 
-    // Choisir parmi les fichiers non-test en priorite, sinon parmi tous
+    // Pick among non-test files first, otherwise among all
     const candidates = nonTestFiles.length > 0 ? nonTestFiles : goFiles;
 
-    // Tri lexicographique pour resultat deterministe
+    // Lexicographic sort for a deterministic result
     candidates.sort();
 
-    return path.join(pkgDir, candidates[0]);
+    return candidates.map((f) => path.join(pkgDir, f));
   }
 
   /**
-   * Verifie si un chemin se trouve dans un repertoire vendor ou cache Go.
+   * Checks whether a path lives under a vendor or Go cache directory.
    */
   private _isInVendorOrCache(filePath: string): boolean {
     const segments = filePath.split(path.sep);

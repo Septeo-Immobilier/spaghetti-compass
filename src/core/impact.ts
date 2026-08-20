@@ -1,10 +1,11 @@
 /**
- * Analyse d'impact inverse (reverse dependency analysis).
+ * Reverse dependency (impact) analysis.
  *
- * Là où `Analyzer.analyze` part d'un point d'entrée et descend vers ses dépendances
- * (« de quoi ce fichier dépend-il ? »), `ImpactAnalyzer` fait l'inverse : à partir d'un
- * fichier cible, il remonte vers tous les fichiers qui en dépendent (« qui serait impacté
- * si je modifie ce fichier ? »), et met en évidence les points d'entrée / routes touchés.
+ * Where `Analyzer.analyze` starts from an entry point and walks down into its
+ * dependencies ("what does this file depend on?"), `ImpactAnalyzer` does the
+ * opposite: starting from a target file, it walks up to every file that depends
+ * on it ("who would be impacted if I change this file?"), and highlights the
+ * entry points / routes touched.
  */
 
 import * as path from 'node:path';
@@ -13,47 +14,54 @@ import type { ContextInfo } from '../types/index.js';
 import { PathResolver } from './resolver.js';
 import { ParserFactory } from '../parser/index.js';
 
-/** Une route (point d'entrée) impactée par une modification du fichier cible. */
+/** A route (entry point) impacted by a change to the target file. */
 export interface ImpactRoute {
-  /** Chemin relatif au contexte */
+  /** Path relative to the context */
   path: string;
-  /** Chemin absolu */
+  /** Absolute path */
   absolutePath: string;
   /**
-   * Chaîne de dépendance la plus courte de la route vers la cible.
-   * Chemins relatifs, du point d'entrée (premier) jusqu'à la cible (dernier).
+   * Shortest dependency chain from the route to the target.
+   * Relative paths, from the entry point (first) to the target (last).
    */
   chain: string[];
 }
 
-/** Résultat complet d'une analyse d'impact. */
+/** Complete result of an impact analysis. */
 export interface ImpactResult {
-  /** Chemin relatif du fichier cible */
+  /** Relative path of the target file */
   target: string;
-  /** Chemin absolu du fichier cible */
+  /** Absolute path of the target file */
   targetAbsolute: string;
-  /** Nombre de fichiers scannés dans le contexte */
+  /** Number of files scanned in the context */
   scannedFiles: number;
-  /** Fichiers qui importent directement la cible (relatifs, triés) */
+  /** Files that directly import the target (relative, sorted) */
   directDependents: string[];
-  /** Tous les fichiers qui dépendent transitivement de la cible (relatifs, triés) */
+  /** All files that transitively depend on the target (relative, sorted) */
   dependents: string[];
-  /** Routes / points d'entrée impactés, avec la chaîne vers la cible */
+  /** Routes / entry points impacted, with the chain to the target */
   routes: ImpactRoute[];
-  /** Patterns utilisés pour identifier les routes */
+  /** Patterns used to identify routes */
   routePatterns: string[];
-  /** true si la cible elle-même correspond à un pattern de route */
+  /** true if the target itself matches a route pattern */
   targetIsRoute: boolean;
+  /**
+   * 'package' for a Go target (edges are resolved at package granularity),
+   * 'file' for every other language (edges are resolved to the exact file).
+   */
+  granularity: 'file' | 'package';
+  /** Human-readable caveat for a package-granular result; null otherwise. */
+  granularityNote: string | null;
 }
 
 export interface ImpactOptions {
-  /** Globs identifiant les routes / points d'entrée (ex: **\/*.controller.ts) */
+  /** Globs identifying routes / entry points (e.g. **\/*.controller.ts) */
   routePatterns: string[];
 }
 
 /**
- * Construit le graphe de dépendances inverse d'un contexte et calcule l'impact
- * d'une modification d'un fichier cible.
+ * Builds the reverse dependency graph of a context and computes the impact
+ * of a change to a target file.
  */
 export class ImpactAnalyzer {
   private context: ContextInfo;
@@ -67,17 +75,17 @@ export class ImpactAnalyzer {
   }
 
   /**
-   * Analyse l'impact d'une modification du fichier `targetPath`.
+   * Analyzes the impact of a change to `targetPath`.
    */
   analyze(targetPath: string, options: ImpactOptions): ImpactResult {
     const targetAbsolute = path.resolve(targetPath);
 
-    // 1. Lister tous les fichiers supportés du contexte (en respectant include/exclude).
+    // 1. List every supported file in the context (respecting include/exclude).
     const files = this.collectFiles(this.context.rootPath);
 
-    // 2. Construire le graphe inverse: pour chaque fichier, résoudre ses imports internes
-    //    et enregistrer une arête cible -> importeur.
-    //    reverseDeps[F] = ensemble des fichiers qui importent F.
+    // 2. Build the reverse graph: for each file, resolve its internal imports
+    //    and record an edge target -> importer.
+    //    reverseDeps[F] = set of files that import F.
     const reverseDeps = new Map<string, Set<string>>();
     for (const file of files) {
       const imported = this.resolveInternalImports(file);
@@ -91,9 +99,9 @@ export class ImpactAnalyzer {
       }
     }
 
-    // 3. BFS depuis la cible sur le graphe inverse pour collecter tous les dépendants.
-    //    `parent[X]` pointe vers le fichier (plus proche de la cible) que X importe,
-    //    ce qui permet de reconstruire la chaîne route -> cible.
+    // 3. BFS from the target over the reverse graph to collect every dependent.
+    //    `parent[X]` points to the file (closest to the target) that X imports,
+    //    which lets us reconstruct the route -> target chain.
     const parent = new Map<string, string | null>();
     parent.set(targetAbsolute, null);
     const queue: string[] = [targetAbsolute];
@@ -111,11 +119,11 @@ export class ImpactAnalyzer {
       }
     }
 
-    // L'ensemble des dépendants exclut la cible elle-même.
+    // The dependent set excludes the target itself.
     const dependentSet = new Set(parent.keys());
     dependentSet.delete(targetAbsolute);
 
-    // 4. Identifier les routes impactées parmi les dépendants.
+    // 4. Identify the impacted routes among the dependents.
     const routes: ImpactRoute[] = [];
     for (const dep of dependentSet) {
       if (this.matchesAnyPattern(dep, options.routePatterns)) {
@@ -131,6 +139,16 @@ export class ImpactAnalyzer {
     const dependents = [...dependentSet].map((f) => this.rel(f)).sort();
     const direct = [...directDependents].map((f) => this.rel(f)).sort();
 
+    // A Go target's transitive closure is entirely Go: resolveInternalImports
+    // only emits an edge when the importer's own parser resolved the specifier,
+    // so a Go importer only ever points at Go files. This makes it sound to
+    // derive granularity once, from the target's parser, rather than per edge.
+    const isGoTarget = this.parserFactory.getParser(targetAbsolute).name === 'go';
+    const granularity: 'file' | 'package' = isGoTarget ? 'package' : 'file';
+    const granularityNote = isGoTarget
+      ? this.buildGoGranularityNote(targetAbsolute, dependents.length > 0)
+      : null;
+
     return {
       target: this.rel(targetAbsolute),
       targetAbsolute,
@@ -140,12 +158,14 @@ export class ImpactAnalyzer {
       routes,
       routePatterns: options.routePatterns,
       targetIsRoute: this.matchesAnyPattern(targetAbsolute, options.routePatterns),
+      granularity,
+      granularityNote,
     };
   }
 
   /**
-   * Reconstruit la chaîne de dépendance d'un fichier jusqu'à la cible
-   * en suivant les pointeurs `parent`.
+   * Reconstructs the dependency chain from a file up to the target
+   * by following the `parent` pointers.
    */
   private buildChain(from: string, parent: Map<string, string | null>): string[] {
     const chain: string[] = [];
@@ -160,7 +180,7 @@ export class ImpactAnalyzer {
   }
 
   /**
-   * Résout les imports internes (dans le contexte) d'un fichier vers des chemins absolus.
+   * Resolves a file's internal imports (within the context) to absolute paths.
    */
   private resolveInternalImports(file: string): string[] {
     const parser = this.parserFactory.getParser(file);
@@ -184,19 +204,20 @@ export class ImpactAnalyzer {
     ];
 
     for (const spec of specifiers) {
-      const resolved = this.resolver.resolve(spec, file);
-      if (!resolved) continue;
-      const location = this.resolver.classifyLocation(resolved, spec, file);
-      if (location === 'internal') {
-        result.push(path.resolve(resolved));
+      const resolvedAll = this.resolver.resolveAll(spec, file);
+      for (const resolved of resolvedAll) {
+        const location = this.resolver.classifyLocation(resolved, spec, file);
+        if (location === 'internal') {
+          result.push(path.resolve(resolved));
+        }
       }
     }
     return result;
   }
 
   /**
-   * Parcourt récursivement un répertoire et retourne les fichiers supportés
-   * respectant les patterns include/exclude du contexte.
+   * Recursively walks a directory and returns the supported files
+   * matching the context's include/exclude patterns.
    */
   private collectFiles(root: string): string[] {
     const files: string[] = [];
@@ -210,7 +231,7 @@ export class ImpactAnalyzer {
       for (const entry of entries) {
         const full = path.join(dir, entry.name);
         if (entry.isDirectory()) {
-          // Élagage rapide des répertoires lourds courants.
+          // Quick pruning of common heavy directories.
           if (entry.name === 'node_modules' || entry.name === '.git' || entry.name === 'vendor' || entry.name === '.gomodcache') {
             continue;
           }
@@ -224,17 +245,50 @@ export class ImpactAnalyzer {
       }
     };
     walk(path.resolve(root));
+    // Deterministic order: `fs.readdirSync` order is filesystem-dependent
+    // (e.g. ext4 returns hash order), and reverseDeps/BFS below assigns each
+    // dependent's `parent` on a first-wins basis, so an unsorted `files`
+    // array would make `routes[].chain` vary across machines and runs.
+    files.sort();
     return files;
   }
 
-  /** Chemin relatif au contexte. */
+  /** Path relative to the context. */
   private rel(absolutePath: string): string {
     return this.resolver.getRelativePath(absolutePath);
   }
 
   /**
-   * Applique les patterns include/exclude du contexte à un fichier.
-   * (N'utilise pas PathResolver.matchesPatterns dont le matchGlob a un bug d'échappement.)
+   * Builds the `granularityNote` for a Go target: `contracts/impact-cli.md`
+   * `NOTE-PKG-JSON-NONEMPTY` / `NOTE-PKG-JSON-EMPTY`, with `<pkg>` substituted
+   * by the target's package directory relative to the context.
+   */
+  private buildGoGranularityNote(targetAbsolute: string, hasDependents: boolean): string {
+    const pkg = this.goPackageName(targetAbsolute);
+    return hasDependents
+      ? `Go analysis resolves imports at package granularity: every non-test file of ${pkg} shares this dependents set.`
+      : `Go analysis resolves imports at package granularity: no file in the scanned context imports ${pkg}, but this is a package-level observation and may be incomplete.`;
+  }
+
+  /**
+   * Human-readable package name for the granularity note: the package
+   * directory relative to the context, normalised to `/`-separated
+   * segments. When the target sits at the context root (`this.rel()`'s
+   * dirname is `.`), falls back to the directory's own name so the note
+   * never renders the unreadable `.`.
+   */
+  private goPackageName(targetAbsolute: string): string {
+    const relDir = path.dirname(this.rel(targetAbsolute));
+    if (relDir === '.' || relDir === '') {
+      return path.basename(path.dirname(targetAbsolute));
+    }
+    return relDir.split(path.sep).join('/');
+  }
+
+  /**
+   * Applies the context's include/exclude patterns to a file.
+   * (Does not use PathResolver.matchesPatterns, whose matchGlob has an
+   * escaping bug.)
    */
   private matchesContextPatterns(filePath: string): boolean {
     const relativePath = this.rel(filePath);
@@ -245,7 +299,7 @@ export class ImpactAnalyzer {
     return this.context.includePatterns.some((p) => matchGlob(relativePath, p));
   }
 
-  /** Teste si un chemin (relatif au contexte) correspond à l'un des globs. */
+  /** Tests whether a path (relative to the context) matches any of the globs. */
   private matchesAnyPattern(absolutePath: string, patterns: string[]): boolean {
     const relativePath = this.rel(absolutePath);
     return patterns.some((p) => matchGlob(relativePath, p));
@@ -253,14 +307,16 @@ export class ImpactAnalyzer {
 }
 
 /**
- * Matching glob simplifié. Supporte `**` (globstar, traverse les répertoires),
- * `*` (dans un segment) et `?`. Échappe d'abord les caractères regex spéciaux
- * pour éviter le bug d'ordre où le `.` du `.*` (issu de `**`) serait ré-échappé.
- * `**\/` matche zéro répertoire ou plus (donc `**\/*.ts` matche aussi un fichier racine).
+ * Simplified glob matching. Supports `**` (globstar, crosses directories),
+ * `*` (within a segment) and `?`. Escapes regex-special characters first
+ * to avoid the ordering bug where the `.` of `.*` (from `**`) would get
+ * re-escaped.
+ * `**\/` matches zero or more directories (so `**\/*.ts` also matches a
+ * root-level file).
  */
 function matchGlob(filePath: string, pattern: string): boolean {
   const regexPattern = pattern
-    .replace(/[.+^${}()|[\]\\]/g, '\\$&') // échappe les spéciaux, sauf * ? /
+    .replace(/[.+^${}()|[\]\\]/g, '\\$&') // escape specials, except * ? /
     .replace(/\*\*\//g, '{{GLOBSTAR_SLASH}}')
     .replace(/\*\*/g, '{{GLOBSTAR}}')
     .replace(/\*/g, '[^/]*')

@@ -91,3 +91,85 @@ describe('SC-002 — ImpactAnalyzer.analyze(entity.go)', () => {
     expect(result.directDependents.length).toBeGreaterThanOrEqual(1);
   });
 });
+
+describe('T003 — package-vs-file asymmetry (internal/notify fixture)', () => {
+  it('sender.go and aaa_marker.go report identical dependents/directDependents/routes, both containing cmd/notifier/main.go', () => {
+    const analyzer = new ImpactAnalyzer(goContext());
+    const options = { routePatterns: ['**/main.go'] };
+
+    const senderResult = analyzer.analyze(
+      path.join(goFixtures, 'internal/notify/sender.go'),
+      options
+    );
+    const markerResult = analyzer.analyze(
+      path.join(goFixtures, 'internal/notify/aaa_marker.go'),
+      options
+    );
+
+    expect(senderResult.dependents).toEqual(markerResult.dependents);
+    expect(senderResult.directDependents).toEqual(markerResult.directDependents);
+    expect(senderResult.routes.map((r) => r.path)).toEqual(
+      markerResult.routes.map((r) => r.path)
+    );
+
+    expect(senderResult.dependents.some((d) => d.includes('cmd/notifier/main.go'))).toBe(true);
+    expect(markerResult.dependents.some((d) => d.includes('cmd/notifier/main.go'))).toBe(true);
+  });
+
+  it('context boundary (NFR-002): excluding cmd/notifier/main.go from the scanned context removes it from sender.go dependents', () => {
+    const options = { routePatterns: ['**/main.go'] };
+
+    // Baseline: with no exclude, cmd/notifier/main.go is a real importer of
+    // sender.go's package and must show up as a dependent.
+    const withoutExclude = new ImpactAnalyzer(goContext()).analyze(
+      path.join(goFixtures, 'internal/notify/sender.go'),
+      options
+    );
+    expect(
+      withoutExclude.dependents.some((d) => d.includes('cmd/notifier/main.go'))
+    ).toBe(true);
+
+    // Excluding the importer from the scanned context must remove it from
+    // both the transitive and the direct dependent sets.
+    const excludedContext: ContextInfo = {
+      ...goContext(),
+      excludePatterns: ['**/cmd/notifier/main.go'],
+    };
+    const withExclude = new ImpactAnalyzer(excludedContext).analyze(
+      path.join(goFixtures, 'internal/notify/sender.go'),
+      options
+    );
+    expect(
+      withExclude.dependents.some((d) => d.includes('cmd/notifier/main.go'))
+    ).toBe(false);
+    expect(
+      withExclude.directDependents.some((d) => d.includes('cmd/notifier/main.go'))
+    ).toBe(false);
+  });
+});
+
+describe('T008 — granularity marker on Go targets (US2, FR-004)', () => {
+  it('non-empty Go target (internal/notify/sender.go) carries granularity: package with a non-null note', () => {
+    const analyzer = new ImpactAnalyzer(goContext());
+    const result = analyzer.analyze(
+      path.join(goFixtures, 'internal/notify/sender.go'),
+      { routePatterns: ['**/main.go'] }
+    );
+
+    expect(result.dependents.length).toBeGreaterThan(0);
+    expect(result.granularity).toBe('package');
+    expect(result.granularityNote).not.toBeNull();
+  });
+
+  it('empty Go target (cmd/service/main.go, quickstart.md step 4) also carries granularity: package with a non-null note', () => {
+    const analyzer = new ImpactAnalyzer(goContext());
+    const result = analyzer.analyze(
+      path.join(goFixtures, 'cmd/service/main.go'),
+      { routePatterns: ['**/main.go'] }
+    );
+
+    expect(result.dependents.length).toBe(0);
+    expect(result.granularity).toBe('package');
+    expect(result.granularityNote).not.toBeNull();
+  });
+});

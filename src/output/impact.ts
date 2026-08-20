@@ -1,15 +1,15 @@
 /**
- * Formatters de sortie pour l'analyse d'impact inverse.
+ * Output formatters for the reverse impact analysis.
  */
 
 import type { ImpactResult } from '../core/impact.js';
 
 export interface ImpactFormatOptions {
-  /** Utiliser des chemins absolus */
+  /** Use absolute paths */
   absolutePaths?: boolean;
-  /** Désactiver le format cliquable chemin:ligne:colonne */
+  /** Disable the clickable path:line:column format */
   noLinks?: boolean;
-  /** Racine du contexte (pour reconstruire les chemins absolus) */
+  /** Context root (used to rebuild absolute paths) */
   rootPath?: string;
 }
 
@@ -24,7 +24,7 @@ const SYMBOLS = {
   lastBranch: '└──',
 };
 
-/** Met un chemin au format cliquable (chemin:1:1) si les liens sont actifs. */
+/** Puts a path in the clickable format (path:1:1) when links are enabled. */
 function clickable(relPath: string, options: ImpactFormatOptions): string {
   let p = relPath;
   if (options.absolutePaths && options.rootPath && !relPath.startsWith('/')) {
@@ -34,7 +34,7 @@ function clickable(relPath: string, options: ImpactFormatOptions): string {
 }
 
 /**
- * Formatte le résultat d'impact en texte lisible.
+ * Formats the impact result as readable text.
  */
 export function formatImpactText(result: ImpactResult, options: ImpactFormatOptions = {}): string {
   const lines: string[] = [];
@@ -57,18 +57,22 @@ export function formatImpactText(result: ImpactResult, options: ImpactFormatOpti
   }
 
   if (result.dependents.length === 0) {
-    lines.push('✅ No file depends on this target — modifying it impacts nothing else.');
+    lines.push(
+      result.granularity === 'package'
+        ? '⚠️  No file in the scanned context imports this package — but Go analysis is package-granular, so this is not a proof that the file is unused.'
+        : '✅ No file depends on this target — modifying it impacts nothing else.'
+    );
     return lines.join('\n');
   }
 
-  // Routes impactées (le cœur du besoin : quelles routes vérifier).
+  // Impacted routes (the core of the need: which routes to verify).
   if (result.routes.length > 0) {
     lines.push(`${SYMBOLS.route} IMPACTED ROUTES (verify these):`);
     result.routes.forEach((route, idx) => {
       const isLast = idx === result.routes.length - 1;
       const branch = isLast ? SYMBOLS.lastBranch : SYMBOLS.branch;
       lines.push(`${branch} ${clickable(route.path, options)}`);
-      // Chaîne route → … → cible
+      // Chain route -> ... -> target
       const indent = isLast ? '    ' : '│   ';
       const chainStr = route.chain
         .map((c) => c.split('/').pop() ?? c)
@@ -86,7 +90,7 @@ export function formatImpactText(result: ImpactResult, options: ImpactFormatOpti
     lines.push('');
   }
 
-  // Dépendants directs.
+  // Direct dependents.
   lines.push(`${SYMBOLS.dependent} DIRECT DEPENDENTS (import the target directly):`);
   result.directDependents.forEach((dep, idx) => {
     const isLast = idx === result.directDependents.length - 1;
@@ -95,7 +99,7 @@ export function formatImpactText(result: ImpactResult, options: ImpactFormatOpti
   });
   lines.push('');
 
-  // Tous les dépendants transitifs.
+  // All transitive dependents.
   lines.push(`${SYMBOLS.dependent} ALL TRANSITIVE DEPENDENTS (${result.dependents.length}):`);
   result.dependents.forEach((dep, idx) => {
     const isLast = idx === result.dependents.length - 1;
@@ -107,7 +111,7 @@ export function formatImpactText(result: ImpactResult, options: ImpactFormatOpti
 }
 
 /**
- * Formatte le résultat d'impact en JSON.
+ * Formats the impact result as JSON.
  */
 export function formatImpactJson(result: ImpactResult): string {
   return JSON.stringify(result, null, 2);

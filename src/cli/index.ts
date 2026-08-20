@@ -24,6 +24,13 @@ const EXIT_CONTEXT_NOT_FOUND = 2;
 const EXIT_PARSE_ERROR = 3;
 const EXIT_FUNCTION_NOT_FOUND = 4;
 
+// `impact` package-granularity note (contracts/impact-cli.md §1, `NOTE-PKG-STDERR`).
+// Deliberately distinct from `degradedMessage('go')` (src/core/lsp/availability.ts):
+// `impact` starts no language server, so this must not read as a gopls-availability warning.
+const NOTE_PKG_STDERR =
+  "Note: Go impact analysis is package-granular — every non-test file of the target's package " +
+  'shares the reported dependents. This is a property of Go\'s import model, not of gopls availability.';
+
 // Version depuis package.json
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const packageJsonPath = path.resolve(__dirname, '../../package.json');
@@ -363,6 +370,12 @@ program
 
       const analyzer = new ImpactAnalyzer(context);
       const result = analyzer.analyze(entryPath, { routePatterns });
+
+      // Emitted exactly once per invocation, in both --json and text mode (FR-007, FR-008;
+      // contracts/impact-cli.md §6): the guard is granularity alone, not options.json.
+      if (result.granularity === 'package') {
+        console.error(NOTE_PKG_STDERR);
+      }
 
       if (options.json) {
         console.log(formatImpactJson(result));
