@@ -46,7 +46,6 @@ jobs:
 
       - name: Run tests
         run: npm run test:run
-        continue-on-error: true
 
       - name: Test package locally
         run: |
@@ -72,11 +71,19 @@ jobs:
       - name: Verify the integrity of provenance attestations and registry signatures
         run: npm audit signatures
 
+      # semantic-release owns the npm publish (@semantic-release/npm with
+      # npmPublish: true). It runs only when a release is actually warranted,
+      # so a chore-only push no longer re-publishes an existing version.
+      # NPM_CONFIG_PROVENANCE carries the --provenance flag; it needs the
+      # id-token: write permission declared above and publishConfig.access
+      # set to "public" in package.json.
       - name: Semantic Release (Dry Run)
         if: ${{ github.event.inputs.dry_run == 'true' }}
         run: npx semantic-release --dry-run
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Semantic Release
         id: semantic-release
@@ -84,12 +91,6 @@ jobs:
         run: npx semantic-release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Publish to private npm registry with provenance
-        if: ${{ github.event.inputs.dry_run != 'true' && steps.semantic-release.outcome == 'success' }}
-        run: |
-          PACKAGE_VERSION=$(node -p "require('./package.json').version")
-          echo "📦 Publishing @septeo-immo/spaghetti-compass@$PACKAGE_VERSION with provenance..."
-          npm publish --provenance
-        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_CONFIG_PROVENANCE: true
