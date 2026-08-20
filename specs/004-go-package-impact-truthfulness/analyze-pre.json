@@ -1,0 +1,145 @@
+{
+  "spec": "004-go-package-impact-truthfulness",
+  "phase": "ANALYZE",
+  "stage": "pre-tasks",
+  "date": "2026-08-19",
+  "tasksRead": false,
+  "verdict": "CHANGES_REQUIRED",
+  "counters": { "critical": 0, "high": 3, "medium": 4, "low": 4 },
+  "resolutions": [
+    {
+      "id": "R1",
+      "topic": "field-naming-collision",
+      "decision": "granularity / granularityNote, values 'file' | 'package'",
+      "rejected": "confidence / confidenceReason, values 'exact' | 'package-level'",
+      "grounds": [
+        "Beta's recorded 'enum beats boolean' argument does not discriminate: alpha proposed a string union too, both extensible to 'symbol'.",
+        "Accuracy: what varies is the resolution unit, a fact about the method; 'confidence' implies a probability the tool never computes, and confidence:'exact' is a category error.",
+        "spec.md vocabulary is already granularity: 8 uses of 'package-granular' vs 5 of 'confidence', 3 of which are prose (spec.md:43, spec.md:97). No FR names a field; FR-004 and FR-005 say 'a field'.",
+        "Amendment cost: 27 mentions in plan.md + quickstart.md vs 73 across data-model.md, contracts/ and research.md, including a machine-readable schema with $defs, allOf and 3 examples."
+      ],
+      "amend": ["plan.md", "quickstart.md"],
+      "leaveAsIs": ["data-model.md", "contracts/impact-cli.md", "contracts/impact-result.schema.json", "research.md"]
+    },
+    {
+      "id": "R2",
+      "topic": "stderr-note-scope",
+      "decision": "Emit NOTE-PKG-STDERR in BOTH text and --json modes.",
+      "grounds": [
+        "FR-008 says 'per invocation' without qualification; US2 scenario 6 illustrates text mode, it does not exclude JSON.",
+        "src/cli/index.ts:182 already encodes the reasoning: 'Under --json, send this to stderr to keep stdout clean'.",
+        "stderr never pollutes the JSON document on stdout."
+      ],
+      "amend": ["contracts/impact-cli.md section 6: promote from 'recommended, ANALYZE should settle' to normative", "research.md D3 open point: mark resolved"]
+    },
+    {
+      "id": "R3",
+      "topic": "constitution-gate",
+      "decision": "Vacuous pass confirmed. No waiver possible or needed.",
+      "evidence": ".specify/memory/constitution.md is the untouched spec-kit template: [PRINCIPLE_1_NAME] .. [GOVERNANCE_RULES], French scaffolding comments.",
+      "recordedAs": "repository-level gap, to be filled by /speckit.constitution outside this branch. Do not author constitution content from a bug-fix branch."
+    }
+  ],
+  "issues": [
+    {
+      "id": "A-001",
+      "severity": "High",
+      "axis": "Plan <-> Data-model/Contracts",
+      "location": "plan.md (Summary, Decision 4, Complexity Tracking); quickstart.md section 4; data-model.md sections 1-2, 5; contracts/impact-cli.md section 1; contracts/impact-result.schema.json",
+      "finding": "Field naming collision between the two parallel PLAN legs: confidence/confidenceReason vs granularity/granularityNote.",
+      "resolution": "R1 - granularity/granularityNote wins.",
+      "action": "Amend plan.md (21 occurrences) and quickstart.md (6 occurrences) to granularity/granularityNote with values 'file'/'package'."
+    },
+    {
+      "id": "A-002",
+      "severity": "High",
+      "axis": "Plan <-> Contracts",
+      "location": "plan.md, section 'Project Structure / Documentation (this feature)'",
+      "finding": "plan.md asserts \"No contracts/ directory: the feature exposes no HTTP or RPC surface\", but contracts/impact-cli.md and contracts/impact-result.schema.json exist, fix the five normative output strings, and are cited by data-model.md sections 2 and 5.5 and by research.md D4.",
+      "action": "Delete the denial and list both contract files in plan.md's documentation tree."
+    },
+    {
+      "id": "A-003",
+      "severity": "High",
+      "axis": "Plan <-> Data-model",
+      "location": "data-model.md section 6 (fixture constraints table); plan.md 'Test strategy / Fixture design'; quickstart.md section 2",
+      "finding": "data-model.md forbids any new fixture file under cmd/**/main.go on the grounds that existing route counts would shift; plan.md deliberately creates fixtures/go/cmd/notifier/main.go so US1 scenario 1 has a route to assert on.",
+      "verifiedAgainstRepo": "The stated hazard does not exist. No test asserts a Go route count: src/core/go-integration.test.ts:73 and :88 pass routePatterns but assert only dependents/directDependents; the only routes).toHaveLength() assertions are src/core/impact.test.ts:59 and :75, on the TypeScript fixtures.",
+      "resolution": "plan.md wins.",
+      "action": "Drop the cmd/**/main.go row from data-model.md section 6. Keep the *handler.go / *handlers.go / *routes.go / *router.go / internal/handlers/ rows, which still constrain aaa_marker.go and sender.go."
+    },
+    {
+      "id": "A-004",
+      "severity": "Medium",
+      "axis": "Plan <-> Data-model",
+      "location": "plan.md Decision 3; data-model.md section 1; research.md D2",
+      "finding": "Granularity derivation source diverges: target extension === '.go' (plan) vs ParserFactory.getParser(targetAbsolute).name === 'go' (data-model, research; src/parser/go.ts:14).",
+      "resolution": "Parser-based derivation wins - it avoids a second extension table drifting from the parser registry.",
+      "action": "Amend plan.md Decision 3."
+    },
+    {
+      "id": "A-005",
+      "severity": "Medium",
+      "axis": "Spec <-> Contracts",
+      "location": "contracts/impact-cli.md section 4 (case c)",
+      "finding": "The contract inserts a new stdout line ('Package-granular result: ...') into the NON-empty Go text output. No FR requires it: FR-006 and US2 scenario 1 both scope the text change to the zero-dependents case.",
+      "action": "Either trace the line to an FR or drop it from the contract. As written, TASKS emits an implementation task with no requirement behind it."
+    },
+    {
+      "id": "A-006",
+      "severity": "Medium",
+      "axis": "Plan <-> Research",
+      "location": "plan.md 'Commands (Docker-only)'; quickstart.md; research.md section 4",
+      "finding": "Two Docker pins for one feature: node:20.18.1-bookworm-slim (plan, quickstart) vs node:20.19-alpine (research).",
+      "resolution": "node:20.18.1-bookworm-slim wins - fully pinned patch; 20.19-alpine is a floating minor tag. Both satisfy engines.node >=20.0.0 (package.json:53) and .github/workflows/release.yml:35 (node-version: \"20\").",
+      "action": "Amend research.md section 4."
+    },
+    {
+      "id": "A-007",
+      "severity": "Medium",
+      "axis": "Spec <-> Plan",
+      "location": "plan.md 'Points of impact' (README row) and test-to-requirement map (FR-011); README.md:176-177 and README.md:450-452",
+      "finding": "FR-011 remediation is incomplete. Only the 'Known limitations' paragraph at README.md:450-452 is planned. The sentence spec.md:67 actually quotes - 'analysis stays file/package-level and never fails' - lives at README.md:176-177 in the optional-gopls blockquote and no artifact plans to touch it.",
+      "action": "Add README.md:176-177 to the FR-011 scope."
+    },
+    {
+      "id": "A-008",
+      "severity": "Low",
+      "axis": "Constitution <-> Plan",
+      "location": ".specify/memory/constitution.md; plan.md 'Constitution Check'",
+      "finding": "Confirmed by direct read: unfilled spec-kit template. Both PLAN legs' 'vacuous pass, no waiver' reading is correct; zero waivers means no waiver-without-sunset risk.",
+      "action": "Record as a repository-level gap. No change to this feature's artifacts."
+    },
+    {
+      "id": "A-009",
+      "severity": "Low",
+      "axis": "Plan <-> Repository",
+      "location": "package.json:53, package.json:75, .claude-flow/state/flow-context7-fetcher.json; plan.md 'Version evidence'; research.md section 4",
+      "finding": "Both PLAN beta input corrections confirmed. (a) package.json:53 declares \"node\": \">=20.0.0\" - the >=18 in the PLAN input was wrong. (b) The Context7 cache vitest entry carries version 4.0.18 but actualVersionResolved 4.0.7 and links to v4.0.7 docs; its manifestDrift summary calls this 'minor within range', which is false - 4.0.7 does not satisfy ^4.0.18 (package.json:75). The declared range is authoritative.",
+      "action": "research.md section 4 already records this correctly. Add the caveat to plan.md 'Version evidence', which repeats 'vitest 4.0.18 ... speculative: false' unqualified. No decision in either leg depends on the vitest version."
+    },
+    {
+      "id": "A-010",
+      "severity": "Low",
+      "axis": "Spec <-> Data-model",
+      "location": "spec.md:111 (Key Entities), spec.md:120 (SC-003)",
+      "finding": "After R1 the spec's Key Entity is named 'Impact Confidence' and SC-003 says 'confidence marker', while the shipped field is granularity. No FR is invalidated - no FR names a field.",
+      "action": "At the next spec touch, add a one-line mapping so a reader does not hunt for a 'confidence' key. Not blocking."
+    },
+    {
+      "id": "A-011",
+      "severity": "Low",
+      "axis": "Plan <-> Repository",
+      "location": "README.md:367; research.md section 8.3",
+      "finding": "README.md:367 enumerates the --json payload keys and will omit granularity. FR-011 mandates only the limitations paragraph, so this is optional. research.md section 8.3 misplaces it: the two edit sites are ~80 lines apart (367 and 450), not 'three lines apart'.",
+      "action": "Fold into the FR-011 task."
+    }
+  ],
+  "tasksDeltaMustRecheck": [
+    "No task names confidence or confidenceReason (R1 / A-001).",
+    "The fixture task creates fixtures/go/cmd/notifier/main.go (A-003).",
+    "An FR-011 task covers both README.md:176-177 and README.md:450-452 (A-007).",
+    "A single Docker image tag appears across all task commands (A-006).",
+    "Any task implementing the non-empty Go stdout qualifier line traces to an FR, or is dropped (A-005)."
+  ]
+}

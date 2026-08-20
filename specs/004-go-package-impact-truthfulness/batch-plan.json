@@ -1,0 +1,165 @@
+{
+  "version": 2,
+  "generatedAt": "2026-08-19T13:06:57Z",
+  "spec": "specs/004-go-package-impact-truthfulness",
+  "fallbackToSequential": false,
+  "fallback": {
+    "scope": "none",
+    "triggeringFiles": [],
+    "reason": "no file exceeds the parallel-serialisation threshold (max touch count observed: 2, for src/core/go-mod.ts, src/core/go-integration.test.ts and src/core/impact.ts)"
+  },
+  "defects": [
+    {
+      "kind": "ambiguous-touches-continuation",
+      "taskIds": ["T013"],
+      "message": "an indented line ('**Exclusivity**: ...') followed T013's Touches: entry, which did not end with a trailing comma — not absorbed into the declared-file set; T013's Touches: resolved correctly to src/core/go-mod.ts from the declaration line alone."
+    }
+  ],
+  "batches": [
+    {
+      "id": 1,
+      "dependsOn": [],
+      "rationale": "Foundational unit (T001): reproduces the defect in a fixture; no earlier unit exists to conflict with.",
+      "phase": "Phase 2: Foundational (blocks US1, US2, US3)",
+      "storyTags": [],
+      "foundational": true,
+      "agents": [
+        {
+          "id": "B1-impl-a",
+          "tasks": ["T001"],
+          "touchesFiles": [
+            "fixtures/go/internal/notify/aaa_marker.go",
+            "fixtures/go/internal/notify/sender.go",
+            "fixtures/go/cmd/notifier/main.go",
+            "fixtures/go/README.md"
+          ],
+          "parallelAsserted": true
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "dependsOn": [1],
+      "rationale": "FR-006 Foundational barrier only (no other unit precedes it). T004 (Pair: T002) is merged into T002's unit; T005 and T006 (both Pair: T003) are merged into T003's unit, satisfying tasks.md's constraint that T004 must land no later than T003's batch by landing in the SAME batch.",
+      "phase": "Phase 3: User Story 1 — Truthful dependents for any file of a Go package (Priority: P1) 🎯 MVP",
+      "storyTags": ["US-1"],
+      "foundational": false,
+      "agents": [
+        {
+          "id": "B2-impl-a",
+          "tasks": ["T002", "T004"],
+          "touchesFiles": ["src/core/go-mod.test.ts", "src/core/go-mod.ts"],
+          "parallelAsserted": true
+        },
+        {
+          "id": "B2-impl-b",
+          "tasks": ["T003", "T005", "T006"],
+          "touchesFiles": ["src/core/go-integration.test.ts", "src/core/resolver.ts", "src/core/impact.ts"],
+          "parallelAsserted": false
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "dependsOn": [1],
+      "rationale": "FR-006 Foundational barrier only. T014 (README) has no code dependency and may run at any point per tasks.md's Parallel opportunities note; scheduled early since it conflicts with nothing.",
+      "phase": "Phase 6: User Story 4 — Accurate \"Known limitations\" text (Priority: P3)",
+      "storyTags": ["US-4"],
+      "foundational": false,
+      "agents": [
+        {
+          "id": "B3-impl-a",
+          "tasks": ["T014"],
+          "touchesFiles": ["README.md"],
+          "parallelAsserted": false
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "dependsOn": [2],
+      "rationale": "File-conflict edge: src/core/impact.ts and src/core/go-integration.test.ts are also declared by batch 2 (T006, T003), so this batch must follow it.",
+      "phase": "Phase 4: User Story 2 — Tell an empty answer apart from an unknown one (Priority: P1)",
+      "storyTags": ["US-2"],
+      "foundational": false,
+      "agents": [
+        {
+          "id": "B4-impl-a",
+          "tasks": ["T007", "T010"],
+          "touchesFiles": ["src/core/impact.test.ts", "src/core/impact.ts"],
+          "parallelAsserted": true
+        },
+        {
+          "id": "B4-impl-b",
+          "tasks": ["T008"],
+          "touchesFiles": ["src/core/go-integration.test.ts"],
+          "parallelAsserted": false
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "dependsOn": [4],
+      "rationale": "Manual edge from tasks.md's BATCH-ORDERING TABLE (Touches: lines alone do not express it): T009's ImpactResult literals will not typecheck until T010 (batch 4) appends the granularity/granularityNote fields; T011's Pair: T009 only merges T009+T011 into one unit, it does not by itself place this unit after T010's, since their declared files (src/output/impact.test.ts, src/output/impact.ts) are disjoint from src/core/impact.ts.",
+      "phase": "Phase 4: User Story 2 — Tell an empty answer apart from an unknown one (Priority: P1)",
+      "storyTags": ["US-2"],
+      "foundational": false,
+      "agents": [
+        {
+          "id": "B5-impl-a",
+          "tasks": ["T009", "T011"],
+          "touchesFiles": ["src/output/impact.test.ts", "src/output/impact.ts"],
+          "parallelAsserted": false
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "dependsOn": [5],
+      "rationale": "Manual edge from tasks.md's Dependencies & Execution Order diagram (T010 -> T011 -> T012): T012 reads result.granularity in src/cli/index.ts, which does not exist until batch 4/5 lands; no Touches: conflict expresses this since src/cli/index.ts is unique to T012.",
+      "phase": "Phase 4: User Story 2 — Tell an empty answer apart from an unknown one (Priority: P1)",
+      "storyTags": ["US-2"],
+      "foundational": false,
+      "agents": [
+        {
+          "id": "B6-impl-a",
+          "tasks": ["T012"],
+          "touchesFiles": ["src/cli/index.ts"],
+          "parallelAsserted": false
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "dependsOn": [6],
+      "rationale": "Manual edge per tasks.md: 'T013 (needs T001-T012; exclusive lock on src/core/go-mod.ts)'. Batch 6's chain (6->5->4->2->1) transitively covers T001-T012, so a single edge suffices; the real file conflict on src/core/go-mod.ts (also declared by batch 2's T004) is subsumed by the same chain and dropped by transitive reduction. T013 does not share a batch with T004 or anything else declaring src/core/go-mod.ts, honouring its exclusivity note.",
+      "phase": "Phase 5: User Story 3 — Catch this defect with the project's own fixture (Priority: P2)",
+      "storyTags": ["US-3"],
+      "foundational": false,
+      "agents": [
+        {
+          "id": "B7-impl-a",
+          "tasks": ["T013"],
+          "touchesFiles": ["src/core/go-mod.ts"],
+          "parallelAsserted": false
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "dependsOn": [3, 7],
+      "rationale": "Manual edge per tasks.md: 'T015 (needs everything)'. Depends on batch 7 (transitively covers T001-T013) and batch 3 (T014's README fix, which T015's quickstart step 8 also verifies and which batch 7's chain does not reach).",
+      "phase": "Phase 7: Polish & Manual Verification",
+      "storyTags": [],
+      "foundational": false,
+      "agents": [
+        {
+          "id": "B8-impl-a",
+          "tasks": ["T015"],
+          "touchesFiles": [],
+          "parallelAsserted": false
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,161 @@
+{
+  "spec": "004-go-package-impact-truthfulness",
+  "phase": "ANALYZE",
+  "stage": "tasks-delta",
+  "date": "2026-08-19",
+  "tasksRead": true,
+  "mergedWith": "analyze-pre.json",
+  "verdict": "Approved",
+  "counters": { "critical": 0, "high": 0, "medium": 0, "low": 1 },
+  "countersRaised": { "critical": 0, "high": 3, "medium": 5, "low": 4 },
+  "appliedResolutions": [
+    {
+      "id": "R1",
+      "decision": "granularity / granularityNote, values 'file' | 'package'",
+      "amended": ["plan.md", "quickstart.md", "spec.md"]
+    },
+    {
+      "id": "R2",
+      "decision": "NOTE-PKG-STDERR emitted in both text and --json mode",
+      "amended": ["contracts/impact-cli.md", "research.md", "plan.md", "tasks.md"]
+    },
+    {
+      "id": "R3",
+      "decision": "Constitution gate vacuous; recorded as repository-level gap, not authored from this branch",
+      "amended": []
+    }
+  ],
+  "fixedFindings": [
+    {
+      "id": "A-002",
+      "severity": "High",
+      "axis": "Plan <-> Contracts",
+      "fix": "Deleted the false 'No contracts/ directory' denial; listed impact-cli.md and impact-result.schema.json in plan.md's doc tree and declared them authoritative over Decision 4's prose.",
+      "amended": ["plan.md"]
+    },
+    {
+      "id": "A-003",
+      "severity": "High",
+      "axis": "Plan <-> Data-model",
+      "fix": "Dropped the empirically false cmd/**/main.go prohibition from data-model.md section 6; replaced it with a row REQUIRING the cmd/ placement, carrying the verification inline.",
+      "reVerified": "No test asserts a Go route count. go-integration.test.ts:73,88 pass routePatterns but assert only dependents/directDependents. The only routes).toHaveLength() calls are impact.test.ts:59,75, and impact.test.ts:18 targets fixtures/typescript.",
+      "amended": ["data-model.md"]
+    },
+    {
+      "id": "A-007",
+      "severity": "High",
+      "axis": "Spec <-> Plan",
+      "fix": "FR-011 widened from one README site to two, plus one optional.",
+      "reVerified": {
+        "gopls-blockquote": "README.md:175-177 (the quoted claim spans 176-177)",
+        "known-limitations": "README.md:450-452",
+        "json-key-list": "README.md:366-367",
+        "distance": "~275 lines between the two mandatory sites"
+      },
+      "amended": ["plan.md", "tasks.md", "quickstart.md"]
+    },
+    {
+      "id": "A-004",
+      "severity": "Medium",
+      "axis": "Plan <-> Data-model",
+      "fix": "plan.md Decision 3 switched from extension-based to parser-based derivation (ParserFactory.getParser(target).name === 'go').",
+      "amended": ["plan.md"]
+    },
+    {
+      "id": "A-005",
+      "severity": "Medium",
+      "axis": "Spec <-> Contracts",
+      "fix": "Dropped the unbacked non-empty stdout qualifier line. No FR requires it; R2's stderr note covers the non-empty caller. plan.md gains Decision 6.",
+      "amended": ["contracts/impact-cli.md", "plan.md", "tasks.md", "quickstart.md"]
+    },
+    {
+      "id": "A-006",
+      "severity": "Medium",
+      "axis": "Plan <-> Research",
+      "fix": "research.md harmonised onto node:20.18.1-bookworm-slim. One tag across every artifact.",
+      "amended": ["research.md"]
+    },
+    {
+      "id": "B-001",
+      "severity": "Medium",
+      "axis": "Spec <-> Tasks",
+      "new": true,
+      "finding": "NFR-002 (data boundary) mapped to no task; T002(c) covered only the vendor/gomodcache half of FR-009.",
+      "fix": "Second assertion added to T003 exercising matchesContextPatterns (src/core/impact.ts:239-246), tagged NFR-002.",
+      "amended": ["tasks.md"]
+    },
+    {
+      "id": "B-002",
+      "severity": "Medium",
+      "axis": "Tasks <-> Tasks",
+      "new": true,
+      "finding": "T005 carried no Pair: line at all. Worse, T003's RED needs T004 AND T005 AND T006, so a {T003, T006} batch could never pass its verifier; T009 likewise cannot typecheck before T010.",
+      "fix": "Pair: T003 added to T005; new 'Batch-ordering constraints' table naming both multi-task greens; dependency graph redrawn.",
+      "amended": ["tasks.md"]
+    },
+    {
+      "id": "A-009",
+      "severity": "Low",
+      "axis": "Plan <-> Repository",
+      "fix": "plan.md 'Version evidence' now records that package.json:53 declares node >=20.0.0 and that the Context7 vitest entry resolved 4.0.7, which does NOT satisfy ^4.0.18 (package.json:75) despite the cache's own manifestDrift summary calling it 'minor within range'. research.md's package.json:57 reference corrected to :53.",
+      "amended": ["plan.md", "research.md"]
+    },
+    {
+      "id": "A-010",
+      "severity": "Low",
+      "axis": "Spec <-> Data-model",
+      "fix": "Key Entity renamed 'Impact Granularity' with a field-name mapping; SC-003 says 'granularity marker'. No FR text touched.",
+      "amended": ["spec.md"]
+    },
+    {
+      "id": "A-011",
+      "severity": "Low",
+      "axis": "Plan <-> Repository",
+      "fix": "README.md:366-367 folded into T014 as optional item (c). research.md section 8's 'three lines apart' corrected to ~85 lines; all three carried questions rewritten as resolved.",
+      "amended": ["research.md", "tasks.md", "plan.md", "quickstart.md"]
+    }
+  ],
+  "openFindings": [
+    {
+      "id": "A-008",
+      "severity": "Low",
+      "axis": "Constitution <-> Plan",
+      "finding": ".specify/memory/constitution.md is the untouched spec-kit template.",
+      "disposition": "Repository-level gap. To be filled by /speckit.constitution outside this branch. Zero waivers exist, so no waiver-without-sunset risk. Does not gate IMPLEMENT."
+    }
+  ],
+  "tasksDeltaChecks": {
+    "noConfidenceNaming": "pass",
+    "researchPendingCleared": "pass",
+    "fixtureCreatesCmdNotifierMain": "pass",
+    "fr011CoversBothReadmeSites": "pass",
+    "singleDockerTag": "pass",
+    "unbackedStdoutLineResolved": "dropped",
+    "everyRequirementMapsToATask": "pass",
+    "tddOrderingHolds": "pass",
+    "designedTddExceptions": ["T012", "T013", "T014"],
+    "touchesLinesExactAndComplete": "pass"
+  },
+  "fileCollisions": [
+    { "file": "src/core/go-integration.test.ts", "tasks": ["T003", "T008"] },
+    { "file": "src/core/impact.ts", "tasks": ["T006", "T010"] },
+    { "file": "src/core/go-mod.ts", "tasks": ["T004", "T013"], "note": "T013's write is transient with an empty net diff but still requires an exclusive lock" }
+  ],
+  "dispatchDeviation": {
+    "instructed": "docker run --rm -v \"$PWD\":/app -w /app node:22-bookworm",
+    "used": "docker run --rm -v \"$PWD:/workspace\" -w /workspace node:20.18.1-bookworm-slim",
+    "grounds": "release.yml:35 pins node-version 20; a suite green on Node 22 locally and red on Node 20 in CI is the drift the Docker-only policy exists to prevent. A-006 had already resolved 28 existing commands onto that tag. Mount point difference is cosmetic.",
+    "policyCompliance": "every command remains Docker-wrapped and fully pinned"
+  },
+  "amendedFiles": [
+    "spec.md",
+    "plan.md",
+    "research.md",
+    "data-model.md",
+    "quickstart.md",
+    "contracts/impact-cli.md",
+    "tasks.md",
+    "analyze.md",
+    "analyze.json"
+  ]
+}

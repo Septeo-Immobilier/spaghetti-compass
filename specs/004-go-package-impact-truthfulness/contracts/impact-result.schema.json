@@ -1,0 +1,171 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Septeo-Immobilier/spaghetti-compass/specs/004-go-package-impact-truthfulness/contracts/impact-result.schema.json",
+  "title": "ImpactResult",
+  "description": "Payload written to stdout by `spaghetti-compass impact --json`, after feature 004. Serialised verbatim from the ImpactResult interface in src/core/impact.ts by formatImpactJson (src/output/impact.ts:112-114). Key order in the emitted document follows interface declaration order; the two fields added by this feature are appended last so that every pre-existing key keeps its position.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "target",
+    "targetAbsolute",
+    "scannedFiles",
+    "directDependents",
+    "dependents",
+    "routes",
+    "routePatterns",
+    "targetIsRoute",
+    "granularity",
+    "granularityNote"
+  ],
+  "properties": {
+    "target": {
+      "type": "string",
+      "description": "Target file path relative to the scanned context."
+    },
+    "targetAbsolute": {
+      "type": "string",
+      "description": "Absolute path of the target file."
+    },
+    "scannedFiles": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Number of supported files collected from the context under the effective include/exclude patterns."
+    },
+    "directDependents": {
+      "type": "array",
+      "items": { "type": "string" },
+      "uniqueItems": true,
+      "description": "Files importing the target directly, relative to the context, lexicographically sorted. For a Go target this means files importing the target's package; see `granularity`."
+    },
+    "dependents": {
+      "type": "array",
+      "items": { "type": "string" },
+      "uniqueItems": true,
+      "description": "All files depending on the target transitively, relative to the context, lexicographically sorted, excluding the target itself. For a Go target this means the package's transitive dependents; see `granularity`."
+    },
+    "routes": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/impactRoute" },
+      "description": "Dependents matching a route pattern, sorted by `path`."
+    },
+    "routePatterns": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Effective route globs, from --routes or config/route-patterns.txt."
+    },
+    "targetIsRoute": {
+      "type": "boolean",
+      "description": "True when the target itself matches a route pattern."
+    },
+    "granularity": {
+      "$ref": "#/$defs/impactGranularity"
+    },
+    "granularityNote": {
+      "type": ["string", "null"],
+      "description": "Human-readable reason for the granularity. Null when granularity is 'file'. Non-empty when granularity is 'package'; the two exact strings are fixed in contracts/impact-cli.md section 1.",
+      "minLength": 1
+    }
+  },
+  "$defs": {
+    "impactGranularity": {
+      "type": "string",
+      "enum": ["file", "package"],
+      "description": "Resolution unit of every edge in this result. 'file' means each edge was resolved to the exact file declaring the imported symbol (TypeScript, JavaScript, Python, PHP). 'package' means edges were resolved to the imported package's file set, so every non-test file of that package carries the same dependents and none is individually proven used (Go). Declared as an enum rather than a boolean so that a future symbol-level Go mode can add a value without a breaking payload change.",
+      "x-future-values": ["symbol"]
+    },
+    "impactRoute": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "absolutePath", "chain"],
+      "description": "Unchanged by feature 004. Carries no per-route granularity: all edges in one result share the result-level `granularity`.",
+      "properties": {
+        "path": {
+          "type": "string",
+          "description": "Route file path relative to the context."
+        },
+        "absolutePath": {
+          "type": "string",
+          "description": "Absolute path of the route file."
+        },
+        "chain": {
+          "type": "array",
+          "items": { "type": "string" },
+          "minItems": 2,
+          "description": "Shortest dependency chain, from the route (first element) down to the target (last element), as context-relative paths."
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "description": "A file-granular result carries no note.",
+      "if": {
+        "properties": { "granularity": { "const": "file" } },
+        "required": ["granularity"]
+      },
+      "then": {
+        "properties": { "granularityNote": { "type": "null" } }
+      }
+    },
+    {
+      "description": "A package-granular result always carries a note, empty dependents or not (FR-004, US2 scenario 3).",
+      "if": {
+        "properties": { "granularity": { "const": "package" } },
+        "required": ["granularity"]
+      },
+      "then": {
+        "properties": { "granularityNote": { "type": "string", "minLength": 1 } }
+      }
+    }
+  ],
+  "examples": [
+    {
+      "target": "internal/repo/inbound_repository.go",
+      "targetAbsolute": "<context>/internal/repo/inbound_repository.go",
+      "scannedFiles": 3,
+      "directDependents": ["cmd/api/main.go"],
+      "dependents": ["cmd/api/main.go"],
+      "routes": [
+        {
+          "path": "cmd/api/main.go",
+          "absolutePath": "<context>/cmd/api/main.go",
+          "chain": ["cmd/api/main.go", "internal/repo/inbound_repository.go"]
+        }
+      ],
+      "routePatterns": ["**/cmd/**/main.go"],
+      "targetIsRoute": false,
+      "granularity": "package",
+      "granularityNote": "Go analysis resolves imports at package granularity: every non-test file of internal/repo shares this dependents set."
+    },
+    {
+      "target": "internal/orphan/thing.go",
+      "targetAbsolute": "<context>/internal/orphan/thing.go",
+      "scannedFiles": 3,
+      "directDependents": [],
+      "dependents": [],
+      "routes": [],
+      "routePatterns": ["**/cmd/**/main.go"],
+      "targetIsRoute": false,
+      "granularity": "package",
+      "granularityNote": "Go analysis resolves imports at package granularity: no file in the scanned context imports internal/orphan, but this is a package-level observation and may be incomplete."
+    },
+    {
+      "target": "models/user.ts",
+      "targetAbsolute": "<context>/models/user.ts",
+      "scannedFiles": 5,
+      "directDependents": ["services/auth-service.ts", "services/user-service.ts"],
+      "dependents": ["main.ts", "services/auth-service.ts", "services/user-service.ts"],
+      "routes": [
+        {
+          "path": "main.ts",
+          "absolutePath": "<context>/main.ts",
+          "chain": ["main.ts", "models/user.ts"]
+        }
+      ],
+      "routePatterns": ["**/main.ts"],
+      "targetIsRoute": false,
+      "granularity": "file",
+      "granularityNote": null
+    }
+  ]
+}
