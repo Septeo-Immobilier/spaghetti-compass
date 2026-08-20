@@ -8,7 +8,7 @@
   "type": "module",
   "main": "dist/cli/index.js",
   "bin": {
-    "spaghetti-compass": "./bin/spaghetti-compass.js"
+    "spaghetti-compass": "bin/spaghetti-compass.js"
   },
   "scripts": {
     "build": "tsc",
