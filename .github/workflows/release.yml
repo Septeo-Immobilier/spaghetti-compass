@@ -32,11 +32,10 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
-          registry-url: "https://registry.npmjs.org"
-          scope: "@septeo-immo"
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          # 24 for semantic-release 25 (engines: ^22.14.0 || >= 24.10.0) and for the
+          # npm >= 11.5.1 that OIDC trusted publishing requires. No registry-url and
+          # no NODE_AUTH_TOKEN: an .npmrc auth line would only compete with OIDC.
+          node-version: "24"
 
       - name: Install dependencies
         run: npm ci
@@ -72,18 +71,20 @@ jobs:
         run: npm audit signatures
 
       # semantic-release owns the npm publish (@semantic-release/npm with
-      # npmPublish: true). It runs only when a release is actually warranted,
-      # so a chore-only push no longer re-publishes an existing version.
-      # NPM_CONFIG_PROVENANCE carries the --provenance flag; it needs the
-      # id-token: write permission declared above and publishConfig.access
-      # set to "public" in package.json.
+      # npmPublish: true), so it runs only when a release is actually warranted.
+      #
+      # Authentication is OIDC trusted publishing, not a token: the plugin asks
+      # GitHub Actions for an id-token scoped to npm:registry.npmjs.org and trades
+      # it for a short-lived publish token. That needs the id-token: write
+      # permission declared above, plus a trusted publisher registered on npmjs
+      # for this repository AND for the workflow filename release.yml.
+      # Provenance comes with it — trusted publishing attests by default, which is
+      # why no --provenance flag and no NPM_CONFIG_PROVENANCE appear here.
       - name: Semantic Release (Dry Run)
         if: ${{ github.event.inputs.dry_run == 'true' }}
         run: npx semantic-release --dry-run
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Semantic Release
         id: semantic-release
@@ -91,6 +92,3 @@ jobs:
         run: npx semantic-release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-          NPM_CONFIG_PROVENANCE: true
