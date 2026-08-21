@@ -1,3 +1,10 @@
+## [1.1.1](https://github.com/Septeo-Immobilier/spaghetti-compass/compare/v1.1.0...v1.1.1) (2026-08-21)
+
+### 🐛 Bug Fixes
+
+* **release:** produce a releasable head for the npm publication ([d53c49b](https://github.com/Septeo-Immobilier/spaghetti-compass/commit/d53c49bb486b6e237a19015bd823ae9d43ed5b45)), closes [#9](https://github.com/Septeo-Immobilier/spaghetti-compass/issues/9)
+* **release:** retrigger the npm publication ([d7db009](https://github.com/Septeo-Immobilier/spaghetti-compass/commit/d7db009738a739413ac8d51898a19a10e5e7233a)), closes [#9](https://github.com/Septeo-Immobilier/spaghetti-compass/issues/9)
+
 ## [1.1.0](https://github.com/Septeo-Immobilier/spaghetti-compass/compare/v1.0.3...v1.1.0) (2026-08-20)
 
 ### ✨ Features
