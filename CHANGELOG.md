@@ -1,3 +1,9 @@
+## [1.1.2](https://github.com/Septeo-Immobilier/spaghetti-compass/compare/v1.1.1...v1.1.2) (2026-08-21)
+
+### 🐛 Bug Fixes
+
+* **ci:** publish to npm through OIDC trusted publishing ([808a23d](https://github.com/Septeo-Immobilier/spaghetti-compass/commit/808a23d0b0c3a8e2bc17fad36cfc2b1b991a12d2))
+
 ## [1.1.1](https://github.com/Septeo-Immobilier/spaghetti-compass/compare/v1.1.0...v1.1.1) (2026-08-21)
 
 ### 🐛 Bug Fixes
