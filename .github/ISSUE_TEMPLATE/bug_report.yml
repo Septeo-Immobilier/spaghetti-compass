@@ -1,0 +1,132 @@
+name: Bug report
+description: Report a wrong, missing, or misleading analysis result
+title: "[bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        A report is actionable when it is reproducible. Give the exact command,
+        its verbatim output, and the language/LSP the target file belongs to.
+        Filing from the CLI? See the `gh issue create` recipe in the README
+        ("Reporting a problem") — it fills these same fields from a heredoc.
+
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Output of `spaghetti-compass --version`.
+      placeholder: "1.1.2"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: command
+    attributes:
+      label: Command
+      options:
+        - explore
+        - impact
+        - doctor
+    validations:
+      required: true
+
+  - type: dropdown
+    id: language
+    attributes:
+      label: Target language / LSP
+      description: The language of the file passed to the command.
+      options:
+        - TypeScript / JavaScript (bundled)
+        - Python (pyright-langserver)
+        - PHP (intelephense)
+        - Go (gopls)
+        - Not language-specific
+    validations:
+      required: true
+
+  - type: dropdown
+    id: lsp_present
+    attributes:
+      label: Was the matching LSP available?
+      description: >
+        Read it off `spaghetti-compass doctor` — OK or MISS on that row. It only
+        affects `explore`; `impact` starts no language server in any language, so
+        a MISS cannot explain an `impact` result.
+      options:
+        - "OK — found in PATH"
+        - "MISS — not found in PATH"
+        - Unknown
+    validations:
+      required: true
+
+  - type: input
+    id: framework
+    attributes:
+      label: Framework / routing convention
+      description: >
+        What decides the shape of the code — it drives route patterns and import
+        resolution.
+      placeholder: "NestJS, Next.js App Router, Nuxt, SvelteKit, FastAPI, Symfony, chi, none…"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: execution
+    attributes:
+      label: How was it run?
+      options:
+        - Host binary (npm i -g)
+        - npx
+        - Docker-wrapped npx
+        - From source (node bin/spaghetti-compass.js)
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Exact command
+      description: >
+        The full command line, repo-relative paths included — e.g.
+        `spaghetti-compass impact internal/ports/inbound_repository.go -c . --json`.
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual output
+      description: Verbatim stdout and stderr. Trim, never paraphrase.
+      render: text
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected output, and the ground truth behind it
+      description: >
+        What the tool should have answered — and how you know. A grep, a call-site
+        count, or a second file of the same package answering differently.
+    validations:
+      required: true
+
+  - type: textarea
+    id: doctor
+    attributes:
+      label: "`spaghetti-compass doctor` output"
+      render: text
+    validations:
+      required: false
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Repository shape
+      description: >
+        Anything that explains the resolution path — monorepo, tsconfig path
+        aliases, PSR-4 layout, several go.mod files, custom route patterns.
+    validations:
+      required: false
