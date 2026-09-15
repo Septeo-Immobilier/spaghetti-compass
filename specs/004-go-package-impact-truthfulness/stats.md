@@ -14,6 +14,21 @@
 
 | timestamp (ISO 8601) | phase | model | duration | files_touched | tasks_completed | tokens_observed | notes |
 |----------------------|-------|-------|----------|---------------|-----------------|-----------------|-------|
+| 2026-09-15T16:56:46Z | SESSION | claude-opus-5 | 7299s | 0 | 0 | 245155 | telemetry: session 6370b7f4-f9b0-48cc-adc3-48be32bf3e0e |
+| 2026-09-15T15:03:01Z | SESSION | claude-opus-5 | 474s | 0 | 0 | 70018 | telemetry: session 6370b7f4-f9b0-48cc-adc3-48be32bf3e0e |
+| 2026-08-21T13:15:24Z | SESSION | claude-opus-5 | 92892s | 0 | 0 | 382618 | telemetry: session ef42d176-b344-4d66-b953-c77a205dce54 |
+| 2026-08-21T13:02:57Z | SESSION | claude-opus-5 | 92145s | 0 | 0 | 338765 | telemetry: session ef42d176-b344-4d66-b953-c77a205dce54 |
+| 2026-08-21T12:55:14Z | SESSION | claude-opus-5 | 91682s | 0 | 0 | 319375 | telemetry: session ef42d176-b344-4d66-b953-c77a205dce54 |
+| 2026-08-21T12:42:48Z | SESSION | claude-opus-5 | 90936s | 0 | 0 | 309619 | telemetry: session ef42d176-b344-4d66-b953-c77a205dce54 |
+| 2026-08-21T12:18:21Z | SESSION | claude-opus-5 | 89469s | 0 | 0 | 294582 | telemetry: session ef42d176-b344-4d66-b953-c77a205dce54 |
+| 2026-08-21T10:16:35Z | SESSION | claude-opus-5 | 82163s | 0 | 0 | 259890 | telemetry: session ef42d176-b344-4d66-b953-c77a205dce54 |
+| 2026-08-21T10:13:49Z | SESSION | claude-opus-5 | 81998s | 0 | 0 | 252214 | telemetry: session ef42d176-b344-4d66-b953-c77a205dce54 |
+| 2026-08-21T09:41:55Z | SESSION | claude-opus-5 | 80083s | 0 | 0 | 249467 | telemetry: session ef42d176-b344-4d66-b953-c77a205dce54 |
+| 2026-08-21T09:22:07Z | SESSION | claude-opus-5 | 78895s | 0 | 0 | 217365 | telemetry: session ef42d176-b344-4d66-b953-c77a205dce54 |
+| 2026-08-21T09:20:01Z | SESSION | claude-opus-5 | 78770s | 0 | 0 | 213228 | telemetry: session ef42d176-b344-4d66-b953-c77a205dce54 |
+| 2026-08-20T21:17:53Z | SESSION | claude-opus-5 | 35441s | 0 | 0 | 197987 | telemetry: session ef42d176-b344-4d66-b953-c77a205dce54 |
+| 2026-08-20T16:43:48Z | SESSION | claude-opus-5 | 18996s | 0 | 0 | 182135 | telemetry: session ef42d176-b344-4d66-b953-c77a205dce54 |
+| 2026-08-20T16:40:53Z | SESSION | claude-opus-5 | 18821s | 0 | 0 | 174077 | telemetry: session ef42d176-b344-4d66-b953-c77a205dce54 |
 | 2026-08-20T16:11:29Z | SESSION | claude-opus-5 | 17057s | 0 | 0 | 152293 | telemetry: session ef42d176-b344-4d66-b953-c77a205dce54 |
 | 2026-08-20T16:01:11Z | SESSION | claude-opus-5 | 16439s | 0 | 0 | 124042 | telemetry: session ef42d176-b344-4d66-b953-c77a205dce54 |
 | 2026-08-20T15:36:09Z | SESSION | claude-opus-5 | 14937s | 0 | 0 | 119496 | telemetry: session ef42d176-b344-4d66-b953-c77a205dce54 |
