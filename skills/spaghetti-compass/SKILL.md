@@ -1,180 +1,360 @@
 ---
-name: spaghetti-compass-exploration
+name: spaghetti-compass
 description: >
-  Explorer et raconter du code avec le CLI spaghetti-compass. Trois cas d'usage :
-  (1) en revue, lancer l'analyse d'impact inverse sur les fichiers modifiés pour
-  savoir quelles routes re-tester ; (2) explorer efficacement les dépendances et
-  le graphe d'appels avant un refactoring ; (3) raconter en langage naturel le
-  parcours de la donnée (de la requête HTTP jusqu'au bout) avec un lien Ctrl+Click
-  vers chaque symbole. À utiliser quand l'utilisateur demande à "reviewer", "voir
-  l'impact d'un changement", "refactorer", "explorer les dépendances", "voir qui
-  appelle", "détecter les cycles", ou "expliquer / raconter comment marche" un flux.
+  Explore, review, and narrate code with the spaghetti-compass CLI. Four use-cases —
+  (1) in review, run reverse impact analysis on changed files to know which files and
+  routes to re-test; (2) explore dependencies and the call-graph before refactoring,
+  including cycle detection; (3) narrate the data flow in plain prose with clickable
+  `path:line:col` links to each symbol; (4) file a reproducible bug report as a GitHub
+  issue when the tool answers wrongly. Use when the user asks to "review", "see the
+  impact of a change", "refactor", "explore dependencies", "see who calls X", "detect
+  cycles", "explain / narrate how a flow works", or "report a spaghetti-compass bug".
 ---
 
-# Spaghetti Compass — explorer, reviewer, raconter le code
+# `spaghetti-compass` — explore, review, and narrate code
 
-Spaghetti-compass s'appuie sur des **LSP** (TypeScript, Intelephense, Pyright, gopls) et des parsers pour donner une **résolution sémantique** (définitions et appels réels, pas du texte), un **graphe de dépendances** transitif, la **détection de cycles**, et l'**analyse d'impact inverse** (qui dépend de ce fichier).
+`spaghetti-compass` leans on **LSP** servers (TypeScript, Intelephense, Pyright, gopls) and parsers to give **semantic resolution** (real definitions and calls, not text matches), a **transitive dependency graph**, **cycle detection**, and **reverse impact analysis** (who depends on this file).
 
-Deux commandes :
+Three commands:
 
-- `explore <entry>` — analyse **avant** : depuis un fichier (ou `fichier:fonction`), suit imports et appels.
-- `impact <file>` — analyse **inverse** : depuis un fichier cible, trouve tous les fichiers **et les routes** qui en dépendent.
+- `explore <entry>` — **forward** analysis: from a file (or `file:function`), follow imports and calls.
+- `impact <file>` — **reverse** analysis: from a target file, find every file **and route** that depends on it.
+- `doctor` — diagnose the environment: Node, the `spaghetti-compass` CLI, and LSP-tool availability.
 
-Toutes les sorties exposent des chemins **cliquables** au format `chemin:ligne:colonne` (Ctrl+Click dans VSCode/Cursor). Ajouter `--json` pour toute exploitation programmatique.
+The **text** output of `explore` and `impact` exposes clickable `path:line:col` paths (Ctrl+Click in VSCode/Cursor). `--json` carries no `:line:col` suffix at all — the text formatter adds it — so its `path`, `target` and `chain` entries are plain relative paths, alongside the absolute variants `targetAbsolute` and `routes[].absolutePath`. `doctor` prints filesystem paths, not source locations. Add `--json` for any programmatic use.
 
-## Prérequis
+License: MIT. npm package: **`@septeo-immo/spaghetti-compass`** (Node >= 20). The unscoped name `spaghetti-compass` is **not** on the registry — only the binary it installs is called that.
 
-Spaghetti-compass fonctionne même sans LSP externe : il retombe alors sur ses parsers et résolveurs internes. En revanche, il est **plus précis** quand il a accès aux serveurs de langage dans le `PATH` de l'environnement qui exécute la commande, surtout pour les définitions exactes et les graphes d'appels.
+## Availability & install (OPTIONAL — degrade gracefully if absent)
 
-À retenir :
+This tool is **optional**. Probe first; if it is unavailable, skip it and fall back to normal reasoning — never block on it.
 
-- TypeScript / JavaScript : le Language Service TypeScript est embarqué via les dépendances npm de `spaghetti-compass`.
-- PHP : installer `intelephense` pour une meilleure résolution des symboles.
-- Python : installer `pyright` / `pyright-langserver` pour une meilleure résolution des symboles.
-- Go : installer `gopls` pour les positions exactes, notamment dans les packages multi-fichiers.
-
-Spaghetti-compass ne se connecte pas au LSP déjà lancé par VSCode/Cursor : il démarre ses propres processus LSP quand les exécutables sont disponibles. Donc privilégier l'exécution sur l'hôte quand l'hôte possède les bons LSP ; en Docker, il faut que l'image les contienne aussi.
-
-**Diagnostic rapide du `PATH`** — Avant une analyse précis-sensible, vérifier la disponibilité des LSPs :
-
+**Probe**:
 ```bash
 spaghetti-compass doctor
+# or, when only the Docker-wrapped npx form is available:
+docker run --rm -v "$(pwd)":/app -w /app node:20 npx -y @septeo-immo/spaghetti-compass doctor
 ```
 
-Cela affichera `OK` pour tous les outils disponibles et `MISS` pour ceux à installer. En cas de `MISS` sur PHP, Python, ou Go, les analyses fonctionneront quand même mais avec une précision réduite.
+**`-y` is not optional.** Without it, `npx` asks "Ok to proceed?", gets no TTY, abandons the
+install, and falls through to a `PATH` lookup — which prints `sh: 1: spaghetti-compass: not found`
+**and exits 0**. An agent reading the exit code sees success; an agent reading the text concludes
+the tool does not exist. Both are wrong: the invocation was.
 
-Commande manuelle (si `doctor` n'est pas disponible) :
+`doctor` prints one `OK` / `MISS` line per tool. **Read the rows, not the exit code**: as of 1.1.2
+the two runtime rows are computed from a hard-coded `true` and from `path.resolve()`, which never
+fails, so `doctor` exits `0` even when `bin/spaghetti-compass.js` has been deleted. A `MISS` on an
+LSP row never affects the exit code either.
 
-```bash
-for bin in spaghetti-compass intelephense pyright-langserver gopls; do
-  if command -v "$bin" >/dev/null 2>&1; then
-    printf "OK   %-20s %s\n" "$bin" "$(command -v "$bin")"
-  else
-    printf "MISS %-20s\n" "$bin"
-  fi
-done
+```
+Spaghetti Compass environment
+
+OK   spaghetti-compass    /usr/local/lib/node_modules/@septeo-immo/spaghetti-compass/bin/spaghetti-compass.js
+OK   node                 /usr/local/bin/node
+OK   TypeScript            bundled
+MISS intelephense         install with: npm install -g intelephense
+MISS pyright-langserver   install with: npm install -g pyright
+MISS gopls                install with: go install golang.org/x/tools/gopls@latest
 ```
 
-Pour Python, `npx pyright-langserver --version` peut aussi suffire si Pyright est disponible via npm local/global/cache, mais un binaire `pyright-langserver` visible dans le `PATH` reste le signal le plus simple à vérifier.
+A `MISS` never blocks an analysis — it degrades the precision of **`explore`**, and the warning goes to **stderr** so `--json` on stdout stays parseable. Install the matching LSP before any precision-sensitive `explore` on PHP, Python, or Go. It changes nothing for `impact`, which starts no language server and reads every file through the parsers regardless.
 
-## Exécution (hôte vs Docker)
+**Install** (host global binary): `npm i -g @septeo-immo/spaghetti-compass`.
 
-**Priorité hôte** : si **spaghetti-compass** est installé (global ou `npx`), l'utiliser sur la machine hôte — le **LSP** déjà présent au niveau du projet améliore la résolution. **Sinon** (CLI absent ou règle docker-execution), utiliser Docker.
+**Host vs Docker execution rule** — a Docker-only policy applies to language toolchains (`node`/`npm`/`npx`/`python`/…), but:
 
-**Sur l'hôte** :
-```bash
-spaghetti-compass explore <entry> -c <context> [options]
-spaghetti-compass impact <file> -c <context> [options]
-# ou npx spaghetti-compass ...
-```
+- The standalone **`spaghetti-compass` binary is not a forbidden toolchain**. When it is installed on the host, run it **directly on the host** — host LSPs improve resolution:
+  ```bash
+  spaghetti-compass impact src/shared/domain/project.model.ts -c . --json
+  ```
+- The **`npx` form is denied** by that policy, so Docker-wrap it:
+  ```bash
+  docker run --rm -v "$(pwd)":/app -w /app node:20 npx -y @septeo-immo/spaghetti-compass impact src/app.ts -c src --json
+  ```
+  Adding `--user $(id -u):$(id -g)` needs a writable npm cache, or the install dies the same
+  silent way: `--user $(id -u):$(id -g) -e HOME=/tmp -e npm_config_cache=/tmp/.npm`. The tool only
+  reads the mounted tree, so it creates no root-owned files and `--user` buys nothing here.
 
-**Fallback Docker** :
-```bash
-docker run --rm --user $(id -u):$(id -g) -v "$(pwd)":/app -w /app node:20 npx spaghetti-compass explore <entry> -c <context>
-```
+`spaghetti-compass` never reuses the LSP session VSCode/Cursor already runs: it starts its own processes when the executables are in `PATH`. In Docker, the image must carry them too.
 
-- `<entry>` / `<file>` : chemin relatif au repo, ex. `src/core/analyzer.ts` ou `src/services/auth.ts:login`
-- `<context>` (`-c`) : répertoire "interne" (ex. `src/` ou `.`) pour classer internal / external / third-party
+**Arguments**:
+- `explore <entry>`: a repo-relative path, optionally suffixed with a symbol —
+  `src/core/analyzer.ts` or `src/services/auth.ts:login`.
+- `impact <file>`: a repo-relative path, **file only**. The `:function` suffix is parsed by
+  `explore` alone; passing it to `impact` looks for a file literally named `auth.ts:login` and
+  exits 1 with `Error: File not found: <resolved absolute path>`.
+- `<context>` (`-c`): the "internal" directory (e.g. `src/` or `.`) used to classify internal / external / third-party.
 
 ---
 
-## Cas 1 — En revue : impact des fichiers modifiés
+## Use-case 1 — In review: impact of changed files
 
-**Quand** : phase de review, ou avant de committer / pousser un changement. Objectif : savoir **quelles routes et quels fichiers** pourraient casser, sans écrire la moindre glue — la commande `impact` suffit.
+**When**: review phase, or before committing / pushing a change. Goal: know **which routes and files** could break, with no glue code — `impact` is enough.
 
-**Recette** : prendre les fichiers modifiés via git, lancer `impact` sur chacun, lire le champ `routes`.
+**Recipe**: take the changed files from git, run `impact` on each, read the `routes` field.
 
 ```bash
-# Fichiers modifiés par rapport à la base de la PR (ou HEAD)
-for f in $(git diff --name-only origin/main...HEAD); do
-  echo "### $f"
-  spaghetti-compass impact "$f" -c . --json
-done
+# Files changed relative to the PR base (or HEAD)
+git diff --name-only -z --diff-filter=d origin/main...HEAD |
+  while IFS= read -r -d '' f; do
+    case "$f" in
+      *.ts|*.tsx|*.js|*.jsx|*.py|*.pyi|*.php|*.go) ;;
+      *) continue ;;
+    esac
+    echo "### $f"
+    spaghetti-compass impact "$f" -c . --json
+  done
 ```
 
-Dans chaque sortie JSON :
+Three details in that loop are load-bearing, and the obvious one-liner gets all three wrong.
+`-z` with `read -d ''` survives a path containing a space, which `for f in $(git diff …)` splits
+into two invocations. `--diff-filter=d` drops deleted files, which `impact` cannot resolve and
+which exit 1. The `case` list is exactly `impact`'s own default scan set — a changed `.yml` or
+`.md` otherwise costs a full context scan to produce nothing, and `.mjs` / `.cjs` are left out on
+purpose: `explore` accepts them as an entry, but `impact`'s default `--include` does not collect
+them as dependents. Pass `-i` explicitly for an `.mjs` codebase, remembering that `-i` **replaces**
+the default list rather than extending it.
 
-- `routes` : les **points d'entrée impactés** (route, handler, cron…) — ce sont eux à re-tester/relire en priorité. Chaque entrée a un `path` cliquable et une `chain` (route → … → fichier modifié) qui explique *pourquoi* la route est touchée.
-- `directDependents` : fichiers qui importent directement la cible.
-- `dependents` : tous les dépendants transitifs (l'étendue réelle du changement).
+In each JSON output:
 
-**Comment l'exploiter en review** : pour chaque fichier modifié, citer les routes impactées et vérifier que les tests/critères d'acceptation couvrent bien ces points d'entrée. Si `routes` est vide alors que des dépendants existent, soit le changement est purement interne, soit les patterns de route ne matchent pas (voir `--routes` / `config/route-patterns.txt`).
+- `routes`: the **impacted entry points** (route, handler, cron…) — re-test / re-review these first. Each entry carries a relative `path`, its `absolutePath`, and a `chain` (route → … → changed file) explaining *why* the route is affected. None of them is suffixed with `:line:col`; run without `--json` if you want clickable output.
+- `directDependents`: files that import the target directly.
+- `dependents`: all transitive dependents (the real blast radius).
+- `granularity`: `"file"` or `"package"` — how precisely the answer is scoped. Read it before you trust a count.
+- `granularityNote`: the one-line caveat when `granularity` is `"package"`; `null` otherwise.
+
+**How to use it in review**: for each changed file, cite the impacted routes and verify the tests / acceptance criteria actually cover those entry points. If `routes` is empty while dependents exist, either the change is purely internal, or the route patterns don't match (see `--routes` / `config/route-patterns.txt`).
+
+### Reading an empty answer on Go — never as a proof
+
+**Go targets always report `granularity: "package"`**, because Go's unit of import is the package, not the file. Consequences, and they are load-bearing:
+
+- Every non-test `.go` file of a package **shares one dependents set**. A file that nothing references still reports the whole package's dependents, and that is correct, not a bug.
+- A zero on a Go file means *no file in the scanned context imports this package*. It is **not** a proof that the file is unused. The text output says so rather than printing the green leaf line:
+  > ⚠️  No file in the scanned context imports this package — but Go analysis is package-granular, so this is not a proof that the file is unused.
+- One stderr line is emitted per invocation, in both text and `--json` mode:
+  > Note: Go impact analysis is package-granular — every non-test file of the target's package shares the reported dependents. This is a property of Go's import model, not of gopls availability.
+- That note has nothing to do with `gopls`: `impact` starts **no** language server, for any language. Installing `gopls` does not make a Go `impact` result file-granular.
+
+So on Go, treat a zero as "widen the search" (grep the symbol, check other modules, check the `--context` you passed), and never quote a per-file dependent count — quote the package's.
+
+TypeScript, JavaScript, Python, and PHP targets report `granularity: "file"` — an answer scoped to the file, not to a package. That is still not a proof of absence: a context file whose parser throws contributes no edges and is skipped silently, so an empty `dependents` means "nothing the parsers could read imports this", not "nothing imports this".
 
 ---
 
-## Cas 2 — Explorer le code efficacement
+## Use-case 2 — Explore the code efficiently
 
-**Quand** : avant un **refactoring** (renommer, déplacer, extraire), pour comprendre un fichier ou une fonction complexe, ou vérifier des **dépendances circulaires**.
+**When**: before a **refactoring** (rename, move, extract), to understand a complex file or function, or to check for **circular dependencies**.
 
-**Pourquoi pas grep ?** Grep cherche du texte (et matche commentaires, strings, faux positifs). Spaghetti-compass résout les **vraies** définitions et appels via LSP, suit la transitivité, et signale les cycles.
+**Why not grep?** Grep searches text (and matches comments, strings, false positives). `spaghetti-compass` resolves the **real** definitions and calls via LSP, follows transitivity, and flags cycles.
 
 ```bash
-# Dépendances d'un fichier (arbre transitif)
+# Dependencies of a file (transitive tree)
 spaghetti-compass explore src/main.ts -c src/ --json
 
-# Graphe d'appels d'une fonction / méthode
+# Call-graph of a function / method
 spaghetti-compass explore src/services/auth.ts:login -c src/ --json
 spaghetti-compass explore src/core/Analyzer.ts:Analyzer.analyze -c src/ --json
 
-# Dépendances directes uniquement
+# Direct dependencies only
 spaghetti-compass explore src/main.ts -c src/ --no-transitive --json
 
-# Détecter les cycles
+# Detect cycles
 spaghetti-compass explore src/index.ts -c src/ --json
-# puis : jq '.stats.circularDependencies'
+# then: jq '.stats.circularDependencies'
 ```
 
-Dans le JSON : `nodes` (fichiers / fonctions / modules externes — id, type, name, path, location), `edges` (from, to, type `import-static` | `import-dynamic` | `call`, resolved), `stats.circularDependencies`, `entryPoint`.
+In the JSON: `nodes` (files / functions / external modules — id, type, name, path, location), `edges` (from, to, type `import-static` | `import-dynamic` | `call`, resolved), `stats.circularDependencies`, `entryPoint`.
 
 ---
 
-## Cas 3 — Raconter le parcours de la donnée en langage naturel
+## Use-case 3 — Narrate the data flow in plain language
 
-**Quand** : l'utilisateur veut **comprendre / faire comprendre** un flux ("explique comment marche…", "raconte ce qui se passe quand on appelle…"). Objectif : une **histoire en prose**, de la requête HTTP jusqu'au bout (réponse, écriture en base, appel externe), où **chaque phrase ou segment de phrase** est suivi entre parenthèses du **lien Ctrl+Click** vers le symbole qui porte le sens de ce segment.
+**When**: the user wants to **understand / explain** a flow ("explain how … works", "narrate what happens when we call …"). Goal: a **prose story**, from the HTTP request to the end (response, DB write, external call), where **each sentence or sentence fragment** is followed in parentheses by the **Ctrl+Click link** to the symbol that carries the meaning of that fragment.
 
-**Recette** :
+**Recipe**:
 
-1. Trouver le **handler** de la route (le `fichier:fonction` du point d'entrée HTTP).
-2. `spaghetti-compass explore <fichier>:<handler> -c <context> --json` pour obtenir le graphe d'appels **dans l'ordre d'exécution** : chaque `node` porte `path` + `line` → c'est le lien à citer.
-3. Suivre l'arbre de haut en bas et écrire la prose. Pour chaque étape, coller le lien `chemin:ligne:colonne` du symbole concerné juste après le segment qui le décrit.
-4. Si un appel sort vers une autre couche (service → repository → client externe), relancer `explore` sur ce symbole pour continuer l'histoire.
+1. Find the route's **handler** (the `file:function` of the HTTP entry point).
+2. `spaghetti-compass explore <file>:<handler> -c <context> --json` to get the call-graph. Each `node` carries `path` + `line` → that's the link to cite. The traversal is depth-first over the call sites **in source order**, which is not the same thing as execution order: a call inside an `if`, a loop, an early return or an `await` appears where it is written, not where it runs.
+3. Walk the tree top-down and write the prose. For each step, paste the `path:line:col` link of the relevant symbol right after the fragment that describes it.
+4. If a call crosses into another layer (service → repository → external client), re-run `explore` on that symbol to continue the story.
 
-**Règle de style** : le lien suit le **bout de phrase qui exprime l'action de ce symbole**, pas la phrase entière. Préférer une granularité fine (un lien par étape) à un seul lien en fin de paragraphe.
+**Style rule**: the link follows the **fragment that expresses that symbol's action**, not the whole sentence. Prefer fine granularity (one link per step) over a single link at the end of a paragraph.
 
-### Exemple — enregistrement d'un utilisateur Hub (route `register`)
+### Example — user registration (route `register`)
 
-> *Les chemins ci-dessous sont illustratifs : remplace-les par ceux que `explore` renvoie réellement pour le projet courant.*
+> *The paths below are illustrative: replace them with what `explore` actually returns for the current project.*
 
-Point de départ :
+Starting point:
 ```bash
 spaghetti-compass explore src/modules/auth/auth.controller.ts:AuthController.register -c src/ --json
 ```
 
-Récit produit :
+Resulting narrative:
 
-> Lorsqu'un client envoie un `POST /auth/register`, la requête atteint le handler de la route (src/modules/auth/auth.controller.ts:42:3) qui commence par valider le corps reçu contre le schéma d'inscription (src/modules/auth/dto/register.dto.ts:8:14). Une fois le payload jugé conforme, le contrôleur délègue toute la logique au service d'authentification (src/modules/auth/auth.service.ts:55:3). Ce service vérifie d'abord qu'aucun compte n'existe déjà pour cet email (src/modules/auth/auth.service.ts:61:5), puis hache le mot de passe avant tout stockage (src/modules/auth/auth.service.ts:64:5). Il propage ensuite l'identité au Hub Septeo en appelant l'API d'inscription (src/integrations/hub/hub.client.ts:30:3), ce qui déclenche un `PATCH /v1/register` côté Keycloak (src/integrations/hub/hub.client.ts:34:5). En cas de succès, l'utilisateur est persisté localement avec son identifiant Hub (src/modules/users/users.repository.ts:48:3), un événement "utilisateur enregistré" est émis pour les abonnés (src/modules/auth/auth.service.ts:78:5), et le contrôleur renvoie enfin une réponse 201 décrivant le compte créé (src/modules/auth/auth.controller.ts:50:5).
+> When a client sends a `POST /auth/register`, the request reaches the route handler (src/modules/auth/auth.controller.ts:42:3), which starts by validating the received body against the registration schema (src/modules/auth/dto/register.dto.ts:8:14). Once the payload is deemed valid, the controller delegates all the logic to the authentication service (src/modules/auth/auth.service.ts:55:3). That service first checks that no account already exists for this email (src/modules/auth/auth.service.ts:61:5), then hashes the password before any storage (src/modules/auth/auth.service.ts:64:5). It then propagates the identity to the Septeo Hub by calling the registration API (src/integrations/hub/hub.client.ts:30:3), which triggers a `PATCH /v1/register` on the Keycloak side (src/integrations/hub/hub.client.ts:34:5). On success, the user is persisted locally with its Hub identifier (src/modules/users/users.repository.ts:48:3), a "user registered" event is emitted for subscribers (src/modules/auth/auth.service.ts:78:5), and the controller finally returns a 201 response describing the created account (src/modules/auth/auth.controller.ts:50:5).
 
-Chaque segment entre parenthèses est un lien Ctrl+Click : le lecteur saute directement au symbole qui réalise l'action décrite, et l'ordre des liens reflète l'ordre d'exécution donné par le graphe d'appels.
+Each parenthesised segment is a Ctrl+Click link: the reader jumps straight to the symbol that performs the described action. The link order follows the call-graph's source order — read the branches yourself before asserting a sequence, because the graph cannot tell you which arm of an `if` ran.
 
 ---
 
-## Référence rapide
+## Use-case 4 — Report a problem as a GitHub issue
 
-**Formats d'entrée**
+**When**: the tool answers something you can prove is wrong, incomplete, or misleading — a dependent that is missing, a route never flagged, an import the resolver drops, a crash. File it against the tool's own repository, never in the consumer project's tracker.
 
-- Fichier seul : `path/to/file.ts`
-- Fonction / méthode : `path/to/file.ts:fonction` ou `path/to/file.ts:ClassName.method`
+Repository: **`Septeo-Immobilier/spaghetti-compass`** · [issue tracker](https://github.com/Septeo-Immobilier/spaghetti-compass/issues)
 
-Extensions supportées : `.ts`, `.tsx`, `.js`, `.jsx`, `.mjs`, `.cjs`, `.py`, `.pyi`, `.php`, `.go`.
+### Before filing — the two-minute reproducibility bar
 
-**Options utiles**
+A report that sends maintainers chasing the wrong cause is worse than no report.
 
-- `-c, --context <dir>` : répertoire interne pour la classification
-- `--json` : sortie machine (à parser avec `jq`)
-- `--no-transitive` (explore) : dépendances directes seulement
-- `-d, --depth <n>` (explore) : profondeur du graphe d'appels (défaut 5)
-- `--routes <glob...>` (impact) : définit les patterns de route (sinon `config/route-patterns.txt`)
-- `--no-links` : désactive le format cliquable `chemin:ligne:colonne`
+1. **Re-run the exact command** and keep the verbatim output — stdout *and* stderr.
+2. **Test the obvious hypothesis — but only where it applies.** For an `explore` defect, a missing
+   LSP is the usual suspect: run `spaghetti-compass doctor`, install the LSP, re-run. If the output
+   is byte-identical, say so — that control run is the most valuable line in the report. For an
+   `impact` defect it is **not** a hypothesis at all: `impact` starts no language server, in any
+   language, so installing one cannot change its answer. Reporting an `impact` bug with "gopls was
+   missing" sends maintainers down a dead end.
+3. **On Go, know which zero you are looking at** (see Use-case 1). A zero on every file of a
+   package means nothing in the scanned context imports that package — expected, not a defect.
+   Two files of the **same** package disagreeing is the defect shape: that one is worth a report.
+4. **Bring the ground truth**, not an impression: a `grep -rn` count, a call-site list, or a second file of the same package that answers differently.
 
-**Schéma JSON `explore`** : `nodes`, `edges`, `stats.circularDependencies`, `entryPoint`.
-**Schéma JSON `impact`** : `target`, `routes` (path + chain), `directDependents`, `dependents`, `scannedFiles`, `routePatterns`.
+### File it with the `gh` CLI
+
+The template below matches the web form at [`.github/ISSUE_TEMPLATE/bug_report.yml`](https://github.com/Septeo-Immobilier/spaghetti-compass/blob/main/.github/ISSUE_TEMPLATE/bug_report.yml). Fill every field, then create the issue non-interactively.
+
+The example below is a **specimen**, not an open bug: its `Actual output` is a verbatim paste from
+the current binary, so copying its shape teaches an output the tool can really produce. Only the
+`Expected` section is invented. Replace every field.
+
+````bash
+cat > /tmp/sc-issue.md <<'EOF'
+## Version
+1.1.2
+
+## Command
+impact
+
+## Target language / LSP
+Go (gopls)
+
+## Was the matching LSP available?
+MISS — not found in PATH
+
+Not a factor: `impact` starts no language server, and a control run on a host
+with gopls in PATH produced byte-identical output.
+
+## Framework / routing convention
+chi router, hexagonal layout, routes under internal/http/**
+
+## How was it run?
+Host binary (npm i -g)
+
+## Exact command
+```bash
+spaghetti-compass impact internal/ports/inbound_repository.go -c .
+```
+
+## Actual output
+stdout (the route-patterns line is long because it carries all 29 defaults):
+```
+═════════════════════════════════════════════════════════════════
+ 🎯 Target: internal/ports/inbound_repository.go:1:1
+ 📁 Scanned: 1204 files
+ 📊 Impact: 0 dependent(s), 0 direct, 0 route(s) impacted
+ 🚪 Route patterns: **/*.controller.ts, **/*.controller.js, **/*.routes.ts, **/*.routes.js, **/*.route.ts, **/*.route.js, **/*.handler.ts, **/*.handler.js, **/app/**/route.ts, **/app/**/route.js, **/app/**/page.tsx, **/app/**/page.jsx, **/server/api/**/*.ts, **/server/routes/**/*.ts, **/+server.ts, **/+page.server.ts, **/routes/**/*.py, **/routers/**/*.py, **/*_router.py, **/views.py, **/*Controller.php, **/cmd/**/main.go, **/*handler.go, **/*handlers.go, **/*routes.go, **/*router.go, **/internal/http/**/*.go, **/internal/handlers/**/*.go, **/internal/server/**/*.go
+═════════════════════════════════════════════════════════════════
+
+⚠️  No file in the scanned context imports this package — but Go analysis is package-granular, so this is not a proof that the file is unused.
+```
+stderr:
+```
+Note: Go impact analysis is package-granular — every non-test file of the target's package shares the reported dependents. This is a property of Go's import model, not of gopls availability.
+```
+
+## Expected output, and the ground truth behind it
+Non-zero. `grep -rn "InboundRepository" --include='*.go'` returns 9 invocations
+across 6 files, 5 of them production code on the inbound-reception path. The
+package IS imported, so the package-granular zero is not merely coarse, it is
+wrong: `cmd/api/main.go` carries `import "github.com/acme/app/internal/ports"`
+on line 12.
+
+## `spaghetti-compass doctor` output
+```
+Spaghetti Compass environment
+
+OK   spaghetti-compass    /usr/local/lib/node_modules/@septeo-immo/spaghetti-compass/bin/spaghetti-compass.js
+OK   node                 /usr/local/bin/node
+OK   TypeScript            bundled
+MISS intelephense         install with: npm install -g intelephense
+MISS pyright-langserver   install with: npm install -g pyright
+MISS gopls                install with: go install golang.org/x/tools/gopls@latest
+
+LSP note: spaghetti-compass starts its own LSP processes when available; it does not reuse VSCode/Cursor LSP sessions.
+```
+
+## Repository shape
+Go monorepo, one go.mod at the root, apps/backend/ + apps/worker/.
+Custom --routes not used; default config/route-patterns.txt.
+EOF
+
+gh issue create \
+  --repo Septeo-Immobilier/spaghetti-compass \
+  --title "[bug] impact reports 0 dependents for a non-first file of a Go package" \
+  --label bug \
+  --body-file /tmp/sc-issue.md
+````
+
+Adjust `--label` to the finding's nature: `bug`, `enhancement`, `documentation`, `question`. `gh` prints the issue URL — hand it back to the user.
+
+**Check for a duplicate first**, and cite it instead of opening a second one:
+
+```bash
+gh issue list --repo Septeo-Immobilier/spaghetti-compass --search "go package impact" --state all
+```
+
+### What belongs in the consumer repo instead
+
+Never commit the report into the project you were working on — it pollutes a history that has no use for it. Keep a local copy at the repo root if you need one, and exclude it through your global ignore file, not the project's `.gitignore`. Git reads no such file by default, so the path has to be declared once per machine:
+
+```bash
+git config --global core.excludesFile ~/.gitignore_global
+echo 'spaghetti-compass-*-report.md' >> ~/.gitignore_global
+```
+
+---
+
+## Quick reference
+
+**Input formats**
+
+- File only: `path/to/file.ts`
+- Function / method: `path/to/file.ts:function` or `path/to/file.ts:ClassName.method`
+
+Supported extensions: `.ts`, `.tsx`, `.js`, `.jsx`, `.mjs`, `.cjs`, `.py`, `.pyi`, `.php`, `.go`. It does **not** analyze bash, markdown, JSON, YAML.
+
+**Commands**
+
+- `explore <entry>` — forward dependency / call-graph.
+- `impact <file>` — reverse impact (files + routes that depend on the target).
+- `doctor` — diagnose environment (Node, CLI, LSP tools).
+
+**Useful flags**
+
+- `-c, --context <dir>` — internal directory used for classification.
+- `--json` / `-j` — machine output (parse with `jq`).
+- `--no-transitive` (explore) — direct dependencies only.
+- `-d, --depth <n>` (explore) — call-graph depth (default 5).
+- `--same-file-only` (explore) — stay inside the entry file.
+- `-t, --tsconfig <path>` — point alias resolution at a specific tsconfig. Its sibling `--no-tsconfig` is **a no-op as of 1.1.2**: Commander files a negated option under its positive key, so the `options.noTsconfig` both commands test is never defined and auto-discovery runs anyway. Move the tsconfig if you really need resolution off.
+- `-r, --root <path>` — project root (default: nearest `package.json`; failing that, the tsconfig's directory).
+- `-i, --include <glob...>` / `-e, --exclude <glob...>` — scan filters.
+- `--routes <glob...>` (impact) — define route patterns (else `config/route-patterns.txt`).
+- `--absolute-paths` / `--no-links` — path rendering.
+- `--hyperlinks` (explore) — OSC 8 terminal hyperlinks.
+
+**Exit codes — `explore` and `impact`**: `0` success · `1` entry file **or `--tsconfig` file** not found, and also every Commander usage error (unknown option, missing argument) · `2` context directory **or `--root`** not found, or not a directory · `3` any error escaping the command — for `explore`, also an entry that parsed to zero nodes · `4` function not found, `explore` only. Three traps: `4` is checked **before** `3`, so `explore file.ts:fn` yielding zero nodes exits `4`; an empty result is `0` in every language; and a *scanned* file whose parser throws does not raise `3` — `impact` swallows it and drops that file's edges. `doctor` exits `3` if the report throws and `0` otherwise; see above for why it cannot currently return `1`.
+
+**JSON schema — `explore`**: `nodes`, `edges`, `stats.circularDependencies`, `entryPoint`.
+**JSON schema — `impact`**: `target`, `targetAbsolute`, `scannedFiles`, `directDependents`, `dependents`, `routes` (each `path`, `absolutePath`, `chain`), `routePatterns`, `targetIsRoute`, `granularity`, `granularityNote`. All ten keys, verified against a live `--json` run.
