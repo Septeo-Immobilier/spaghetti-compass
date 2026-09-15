@@ -16,21 +16,29 @@ CLI tool to explore and visualize code dependency relations in **TypeScript**, *
 
 ## Installation
 
-### From npm (when published)
+### From npm
+
+The package is published as **`@septeo-immo/spaghetti-compass`**; the binary it installs is
+called `spaghetti-compass`. The unscoped name is not on the registry — always install the
+scoped one.
 
 ```bash
 # Global installation
-npm install -g spaghetti-compass
+npm install -g @septeo-immo/spaghetti-compass
 
 # Or use via npx
-npx spaghetti-compass explore <file>
+npx -y @septeo-immo/spaghetti-compass explore src/main.ts
 ```
+
+`-y` matters outside an interactive terminal. Without it `npx` asks "Ok to proceed?", gets no
+TTY in CI or under an agent, abandons the install, falls through to a `PATH` lookup and prints
+`sh: 1: spaghetti-compass: not found` **while exiting 0** — a failure that reads as a success.
 
 ### From source (local development)
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-username/spaghetti-compass.git
+git clone https://github.com/Septeo-Immobilier/spaghetti-compass.git
 cd spaghetti-compass
 
 # Install dependencies
@@ -290,12 +298,12 @@ spaghetti-compass doctor
 # Output:
 # Spaghetti Compass environment
 #
-# OK   spaghetti-compass     /usr/local/bin/spaghetti-compass
-# OK   node                  /usr/local/bin/node
+# OK   spaghetti-compass    /usr/local/lib/node_modules/@septeo-immo/spaghetti-compass/bin/spaghetti-compass.js
+# OK   node                 /usr/local/bin/node
 # OK   TypeScript            bundled
-# MISS intelephense          install with: npm install -g intelephense
-# OK   pyright-langserver    /usr/local/bin/pyright-langserver
-# OK   gopls                 /Users/me/go/bin/gopls
+# MISS intelephense         install with: npm install -g intelephense
+# OK   pyright-langserver   /usr/local/bin/pyright-langserver
+# OK   gopls                /Users/me/go/bin/gopls
 #
 # LSP note: spaghetti-compass starts its own LSP processes when available; 
 # it does not reuse VSCode/Cursor LSP sessions.
@@ -325,7 +333,7 @@ currently working on.
 # Which files and routes depend on a shared domain model?
 spaghetti-compass impact src/shared/domain/project.model.ts --context src
 
-# Customize what counts as a "route" (default: **/*.controller.ts, **/*.controller.js)
+# Customize what counts as a "route" (--routes REPLACES the 29 defaults from config/route-patterns.txt)
 spaghetti-compass impact src/shared/utils/date.ts --context src --routes "**/*.controller.ts" "**/*.route.ts"
 
 # JSON for tooling / CI
@@ -364,8 +372,9 @@ route R; which **other** routes also go through A and must be re-checked?"*.
 | `--absolute-paths` | | Absolute instead of relative paths | `false` |
 | `--no-links` | | Disable `path:line:column` format | |
 
-The JSON output exposes `target`, `scannedFiles`, `directDependents`, `dependents`, `routes`
-(each with a `chain` array from route to target), `granularity`, and `granularityNote`.
+The JSON output exposes all ten keys: `target`, `targetAbsolute`, `scannedFiles`,
+`directDependents`, `dependents`, `routes` (each with `path`, `absolutePath`, and a `chain` array
+from route to target), `routePatterns`, `targetIsRoute`, `granularity`, and `granularityNote`.
 
 ### Customizing what counts as a "route"
 
@@ -393,33 +402,49 @@ spaghetti-compass impact src/domain/errors/auth.errors.ts -c src --routes "**/*.
 An agent skill that teaches an AI assistant (Cursor, Claude, etc.) how and when to use
 spaghetti-compass is provided as plain Markdown:
 
-**[`docs/skills/spaghetti-compass/SKILL.md`](docs/skills/spaghetti-compass/SKILL.md)**
+**[`skills/spaghetti-compass/SKILL.md`](skills/spaghetti-compass/SKILL.md)**
 
-It covers three use cases — reverse impact analysis during review, efficient dependency
-exploration, and narrating a data flow in natural language with clickable symbol links.
+It covers four use cases — reverse impact analysis during review (including how to read a
+package-granular Go result), efficient dependency exploration, narrating a data flow in natural
+language with clickable symbol links, and filing a reproducible bug report as a GitHub issue.
 
 To install it, copy the file into your agent's skill directory, e.g.:
 
 ```bash
-mkdir -p .cursor/skills-cursor/spaghetti-compass-exploration
-cp docs/skills/spaghetti-compass/SKILL.md .cursor/skills-cursor/spaghetti-compass-exploration/
-# or .claude/skills/… , .agents/skills/… depending on your tool
+mkdir -p .claude/skills/spaghetti-compass
+cp skills/spaghetti-compass/SKILL.md .claude/skills/spaghetti-compass/
+# or .cursor/skills/… , .agents/skills/… depending on your tool
 ```
 
-## Options
+## Options (`explore`)
+
+Every row below describes **`explore`**. `impact` has its own flag set and its own, wider
+defaults — see [its table](#reverse-impact-analysis-impact). `--depth`, `--same-file-only` and
+`--hyperlinks` do not exist on `impact` or `doctor`, which reject them with
+`error: unknown option`.
 
 | Option | Alias | Description | Default |
 |--------|-------|-------------|---------|
 | `--context <dir>` | `-c` | Context directory for classification | `.` |
 | `--json` | `-j` | Output as JSON | `false` |
-| `--include <glob...>` | `-i` | Include patterns | `**/*.ts, **/*.js, **/*.py, **/*.php, **/*.go` |
+| `--include <glob...>` | `-i` | Include patterns | `**/*.ts, **/*.js, **/*.go` — everything else, `.tsx` / `.jsx` / `.py` / `.php` / `.mjs` / `.cjs` included, needs an explicit `-i`. Note `-i` **replaces** the list, it does not add to it |
 | `--exclude <glob...>` | `-e` | Exclude patterns | `**/node_modules/**` |
 | `--no-transitive` | | Direct dependencies only | `false` |
+| `--depth <n>` | `-d` | Max depth of the recursive function call-graph | `5` |
+| `--same-file-only` | | Only explore functions declared in the entry file | `false` |
+| `--tsconfig <path>` | `-t` | tsconfig used for alias resolution | auto-discover |
+| `--no-tsconfig` | | Intended to disable TypeScript alias resolution. **Currently a no-op** on both commands — see below | |
+| `--root <path>` | `-r` | Project root | nearest `package.json`; failing that, the tsconfig's directory |
 | `--absolute-paths` | | Use absolute paths instead of relative | `false` |
 | `--no-links` | | Disable `path:line:column` format | `false` |
 | `--hyperlinks` | | Enable OSC 8 hyperlinks (advanced) | `false` |
 | `--help` | `-h` | Show help | |
 | `--version` | `-v` | Show version | |
+
+> **`--no-tsconfig` does nothing as of 1.1.2.** Commander stores a negated option under its
+> *positive* key, so `--no-tsconfig` sets `options.tsconfig` to `false` and never defines the
+> `options.noTsconfig` both commands branch on. Alias resolution stays on. To analyze without it,
+> move or rename the tsconfig. (`--no-transitive` and `--no-links` are wired correctly and do work.)
 
 ## Supported Languages
 
@@ -475,13 +500,29 @@ spaghetti-compass explore src/Services/UserService.php
 
 ## Exit Codes
 
+For `explore` and `impact`. An empty result is a success: `0` dependents exits `0`, in every
+language.
+
 | Code | Meaning |
 |------|---------|
 | `0` | Success |
-| `1` | Entry file not found |
-| `2` | Context directory not found |
-| `3` | Parse error (invalid syntax) |
-| `4` | Function not found |
+| `1` | Entry file — or `--tsconfig` file — not found. Commander also exits `1` on a usage error |
+| `2` | Context directory — or `--root` — not found, or not a directory |
+| `3` | Any error escaping the command; for `explore`, also an entry that parsed to zero nodes |
+| `4` | Function not found (`explore` only) |
+
+Three asymmetries worth knowing before scripting against these:
+
+- Code `1` is not only "file missing". Commander rejects an unknown option or a missing argument
+  before either command runs — `impact foo.ts --depth 1` exits `1` without touching the filesystem.
+- Code `4` wins over `3`. `explore` checks the requested function before it checks for an empty
+  graph, so `explore file.ts:fn` that yields zero nodes exits `4`, never `3`.
+- Code `3` does **not** cover a *scanned* file with invalid syntax: `impact` catches that parser
+  exception, drops the file's edges, and still exits `0`.
+
+`doctor` has its own scale — `3` if the report itself throws, otherwise the value of
+`getDoctorExitCode`, which today can only be `0`: both runtime rows are computed from a hard-coded
+`true` and from `path.resolve()`, which never fails. Read the `OK` / `MISS` rows, not the exit code.
 
 ## Usage by AI Agents
 
@@ -491,19 +532,19 @@ Spaghetti Compass is designed to be easily used by AI agents like **Cursor**, **
 
 ```bash
 # Explore file dependencies (JSON output for parsing)
-npx spaghetti-compass explore src/main.ts --json
+npx -y @septeo-immo/spaghetti-compass explore src/main.ts --json
 
 # Explore a specific function's call graph
-npx spaghetti-compass explore src/services/auth.ts:login --json
+npx -y @septeo-immo/spaghetti-compass explore src/services/auth.ts:login --json
 
 # Check for circular dependencies
-npx spaghetti-compass explore src/index.ts --json | jq '.stats.circularDependencies'
+npx -y @septeo-immo/spaghetti-compass explore src/index.ts --json | jq '.stats.circularDependencies'
 
 # Count impacted files
-npx spaghetti-compass explore src/utils/helper.ts --json | jq '.nodes | length'
+npx -y @septeo-immo/spaghetti-compass explore src/utils/helper.ts --json | jq '.nodes | length'
 
 # Reverse: which routes depend on a file (impact analysis)
-npx spaghetti-compass impact src/shared/domain/project.model.ts -c src --json | jq '.routes[].path'
+npx -y @septeo-immo/spaghetti-compass impact src/shared/domain/project.model.ts -c src --json | jq '.routes[].path'
 ```
 
 ### JSON Output Schema
@@ -546,7 +587,7 @@ You can ask your AI agent:
 
 ```bash
 # Save analysis to file
-npx spaghetti-compass explore src/main.ts --json > deps.json
+npx -y @septeo-immo/spaghetti-compass explore src/main.ts --json > deps.json
 
 # Extract specific data with jq
 jq '.nodes[] | select(.location == "internal") | .path' deps.json
@@ -563,7 +604,7 @@ jq '.stats.circularDependencies' deps.json
 ```yaml
 - name: Check for circular dependencies
   run: |
-    npx spaghetti-compass explore src/index.ts -c src/ --json > deps.json
+    npx -y @septeo-immo/spaghetti-compass explore src/index.ts -c src/ --json > deps.json
     CYCLES=$(jq '.stats.circularDependencies | length' deps.json)
     if [ "$CYCLES" -gt "0" ]; then
       echo "❌ Circular dependencies detected!"
@@ -577,7 +618,7 @@ jq '.stats.circularDependencies' deps.json
 ```yaml
 - name: Dependency analysis
   run: |
-    npx spaghetti-compass explore src/index.ts --json > deps.json
+    npx -y @septeo-immo/spaghetti-compass explore src/index.ts --json > deps.json
     echo "📊 Dependency Stats:"
     jq '.stats' deps.json
     
@@ -590,28 +631,167 @@ jq '.stats.circularDependencies' deps.json
 
 ## Publishing
 
-### Manual Publishing (npm)
+Releases are automatic. A push to `main` runs
+[`.github/workflows/release.yml`](.github/workflows/release.yml), which builds, tests, installs
+the packed tarball in an isolated directory, then hands the publish to **semantic-release**.
+One push is deliberately exempt: semantic-release commits the changelog and the bumped
+`package.json` back to `main` with `[skip ci]` in the subject, so its own commit does not
+re-trigger the workflow.
 
-Use GitHub Actions to publish to npm:
+The version and the `CHANGELOG.md` entry come from the Conventional Commits in the range, per the
+`releaseRules` in [`.releaserc.json`](.releaserc.json): `feat:` bumps the minor, a
+`BREAKING CHANGE:` footer the major, and `fix:` / `perf:` / `refactor:` / `docs(README):` the
+patch. `chore:`, `style:`, `test:` and any other `docs` scope release nothing. No releasable
+commit means no release and no version bump.
 
-1. Go to **Actions** → **Publish to npm**
-2. Click **Run workflow**
-3. Optionally specify a version (`patch`, `minor`, `major`, or `1.2.3`)
-4. **Dry run** is enabled by default - this tests the package without publishing
-5. Uncheck **Dry run** to actually publish to npm
-6. Click **Run workflow**
+**Never publish by hand.** `npm publish` from a workstation skips the changelog, the git tag,
+and the provenance attestation, and desynchronizes `main` from the registry.
 
-The workflow will:
-- Build the project
-- Run tests
-- Create and test the package locally
-- Publish to npm (or dry-run)
+### Authentication: OIDC trusted publishing, not a token
 
-### Required GitHub Secret
+There is **no `NPM_TOKEN` secret**. The workflow asks GitHub Actions for an `id-token` scoped to
+`registry.npmjs.org` and trades it for a short-lived publish token. That requires:
 
-| Secret | Description | How to generate |
-|--------|-------------|-----------------|
-| `NPM_TOKEN` | npm automation token | `npm token create --type=automation` or [npmjs.com/settings/tokens](https://www.npmjs.com/settings/~/tokens) |
+| Requirement | Where |
+|-------------|-------|
+| `id-token: write` permission | declared in `release.yml` |
+| A trusted publisher registered on npmjs | for this repository **and** for the workflow filename `release.yml` |
+| npm >= 11.5.1 | supplied by the Node 24 that `setup-node` pins — the workflow pins the Node major, not npm itself |
+
+Provenance comes with trusted publishing by default — hence no `--provenance` flag and no
+`NPM_CONFIG_PROVENANCE` anywhere in the workflow.
+
+### Dry run
+
+Trigger the workflow manually (**Actions** → **Release** → **Run workflow**) with **Dry run**
+checked: `semantic-release --dry-run` reports the version it would cut and the release notes,
+and publishes nothing.
+
+---
+
+## Reporting a problem
+
+Wrong, missing, or misleading result? File it against this repository — never in the tracker of
+the project you were analyzing.
+
+**[github.com/Septeo-Immobilier/spaghetti-compass/issues](https://github.com/Septeo-Immobilier/spaghetti-compass/issues)**
+
+### Before filing — the reproducibility bar
+
+A report that sends maintainers chasing the wrong cause is worse than no report.
+
+1. **Re-run the exact command** and keep the verbatim output, stdout *and* stderr.
+2. **Test the obvious hypothesis — where it applies.** For an `explore` defect, a missing LSP is
+   the usual suspect: run `spaghetti-compass doctor`, install the LSP, re-run. If the output is
+   byte-identical, say so — that control run is the most valuable line in the report. For an
+   `impact` defect it is not a hypothesis at all: `impact` starts no language server, in any
+   language, so installing one cannot change its answer.
+3. **On Go, know which zero you are looking at** (see [Go Support](#go-support)). A zero shared by
+   every file of a package means nothing in the scanned context imports it — expected. Two files of
+   the *same* package disagreeing is the defect shape. Check the `granularity` field either way.
+4. **Bring the ground truth**, not an impression: a `grep -rn` count, a call-site list, or a second
+   file of the same package that answers differently.
+
+### From the web
+
+Open a new issue and pick **Bug report**. The form
+([`.github/ISSUE_TEMPLATE/bug_report.yml`](.github/ISSUE_TEMPLATE/bug_report.yml)) asks for the
+version, the command, the **target language and whether its LSP was available**, the
+**framework / routing convention**, how the tool was run, the actual output, and the expected one
+with its ground truth.
+
+### From the CLI (`gh`)
+
+Same fields, non-interactive — this is the form an agent should use. The example below is a
+**specimen**, not an open bug: its `Actual output` is a verbatim paste from
+the current binary, so
+copying its shape teaches an output the tool can really produce. Only the `Expected` section is
+invented. Replace every field.
+
+````bash
+cat > /tmp/sc-issue.md <<'EOF'
+## Version
+1.1.2
+
+## Command
+impact
+
+## Target language / LSP
+Go (gopls)
+
+## Was the matching LSP available?
+MISS — not found in PATH
+
+Not a factor: `impact` starts no language server, and a control run on a host
+with gopls in PATH produced byte-identical output.
+
+## Framework / routing convention
+chi router, hexagonal layout, routes under internal/http/**
+
+## How was it run?
+Host binary (npm i -g)
+
+## Exact command
+```bash
+spaghetti-compass impact internal/ports/inbound_repository.go -c .
+```
+
+## Actual output
+stdout (the route-patterns line is long because it carries all 29 defaults):
+```
+═════════════════════════════════════════════════════════════════
+ 🎯 Target: internal/ports/inbound_repository.go:1:1
+ 📁 Scanned: 1204 files
+ 📊 Impact: 0 dependent(s), 0 direct, 0 route(s) impacted
+ 🚪 Route patterns: **/*.controller.ts, **/*.controller.js, **/*.routes.ts, **/*.routes.js, **/*.route.ts, **/*.route.js, **/*.handler.ts, **/*.handler.js, **/app/**/route.ts, **/app/**/route.js, **/app/**/page.tsx, **/app/**/page.jsx, **/server/api/**/*.ts, **/server/routes/**/*.ts, **/+server.ts, **/+page.server.ts, **/routes/**/*.py, **/routers/**/*.py, **/*_router.py, **/views.py, **/*Controller.php, **/cmd/**/main.go, **/*handler.go, **/*handlers.go, **/*routes.go, **/*router.go, **/internal/http/**/*.go, **/internal/handlers/**/*.go, **/internal/server/**/*.go
+═════════════════════════════════════════════════════════════════
+
+⚠️  No file in the scanned context imports this package — but Go analysis is package-granular, so this is not a proof that the file is unused.
+```
+stderr:
+```
+Note: Go impact analysis is package-granular — every non-test file of the target's package shares the reported dependents. This is a property of Go's import model, not of gopls availability.
+```
+
+## Expected output, and the ground truth behind it
+Non-zero. `grep -rn "InboundRepository" --include='*.go'` returns 9 invocations
+across 6 files, 5 of them production code on the inbound-reception path. The
+package IS imported, so the package-granular zero is not merely coarse, it is
+wrong: `cmd/api/main.go` carries `import "github.com/acme/app/internal/ports"`
+on line 12.
+
+## `spaghetti-compass doctor` output
+```
+Spaghetti Compass environment
+
+OK   spaghetti-compass    /usr/local/lib/node_modules/@septeo-immo/spaghetti-compass/bin/spaghetti-compass.js
+OK   node                 /usr/local/bin/node
+OK   TypeScript            bundled
+MISS intelephense         install with: npm install -g intelephense
+MISS pyright-langserver   install with: npm install -g pyright
+MISS gopls                install with: go install golang.org/x/tools/gopls@latest
+
+LSP note: spaghetti-compass starts its own LSP processes when available; it does not reuse VSCode/Cursor LSP sessions.
+```
+
+## Repository shape
+Go monorepo, one go.mod at the root, apps/backend/ + apps/worker/.
+Custom --routes not used; default config/route-patterns.txt.
+EOF
+
+gh issue create \
+  --repo Septeo-Immobilier/spaghetti-compass \
+  --title "[bug] impact reports 0 dependents for a non-first file of a Go package" \
+  --label bug \
+  --body-file /tmp/sc-issue.md
+````
+
+Swap `--label` for the finding's nature: `bug`, `enhancement`, `documentation`, `question`.
+Check for a duplicate first and cite it instead of opening a second one:
+
+```bash
+gh issue list --repo Septeo-Immobilier/spaghetti-compass --search "go package impact" --state all
+```
 
 ---
 
