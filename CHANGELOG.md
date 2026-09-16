@@ -1,3 +1,9 @@
+## [1.1.4](https://github.com/Septeo-Immobilier/spaghetti-compass/compare/v1.1.3...v1.1.4) (2026-09-16)
+
+### 🐛 Bug Fixes
+
+* **impact:** keep test files out of the blast radius, report them as coverage ([e0cbc67](https://github.com/Septeo-Immobilier/spaghetti-compass/commit/e0cbc67d46c0e83ec2e7d1f74768ac7f4c64bce4))
+
 ## [1.1.3](https://github.com/Septeo-Immobilier/spaghetti-compass/compare/v1.1.2...v1.1.3) (2026-09-16)
 
 ### 📚 Documentation
