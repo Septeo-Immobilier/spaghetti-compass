@@ -1,3 +1,12 @@
+## [1.1.3](https://github.com/Septeo-Immobilier/spaghetti-compass/compare/v1.1.2...v1.1.3) (2026-09-16)
+
+### 📚 Documentation
+
+* add a GitHub bug-report issue form ([32a982f](https://github.com/Septeo-Immobilier/spaghetti-compass/commit/32a982fa25feb7e1dfc1c935f3196fe85df87eea))
+* **README:** correct the install command and document the real CLI surface ([394d869](https://github.com/Septeo-Immobilier/spaghetti-compass/commit/394d869922b183373bba4bf395227cf93903866a))
+* record three CLI defects found while reviewing the docs ([23f27c0](https://github.com/Septeo-Immobilier/spaghetti-compass/commit/23f27c0c01f0b46ae774d2575b08fc703a13e2b0))
+* refresh the shipped agent skill against the current CLI ([c7e5437](https://github.com/Septeo-Immobilier/spaghetti-compass/commit/c7e543758f0c9bc715e856ba9a25ce5b29c8ef40))
+
 ## [1.1.2](https://github.com/Septeo-Immobilier/spaghetti-compass/compare/v1.1.1...v1.1.2) (2026-08-21)
 
 ### 🐛 Bug Fixes
