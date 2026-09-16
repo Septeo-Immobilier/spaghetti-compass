@@ -364,17 +364,45 @@ route R; which **other** routes also go through A and must be re-checked?"*.
 |--------|-------|-------------|---------|
 | `--context <dir>` | `-c` | Directory to scan for dependents | `.` |
 | `--routes <glob...>` | | Globs identifying routes / entry points (overrides the config file) | from [`config/route-patterns.txt`](config/route-patterns.txt) |
+| `--tests <glob...>` | | Globs identifying test files — kept out of the blast radius, reported as `coveringTests` (replaces the built-in list) | the conventions of the four supported languages |
 | `--json` | `-j` | Output as JSON | `false` |
 | `--include <glob...>` | `-i` | Files to scan | all supported languages |
-| `--exclude <glob...>` | `-e` | Files to skip | `**/node_modules/**`, `**/dist/**`, tests |
+| `--exclude <glob...>` | `-e` | Files to skip. **Replaces** the default list, never extends it | `**/node_modules/**`, `**/dist/**`, `**/vendor/**`, `**/.gomodcache/**` — tests are scanned on purpose, then classified |
 | `--tsconfig <path>` | `-t` | tsconfig for alias resolution | auto-discover |
 | `--root <path>` | `-r` | Project root | auto-discover |
 | `--absolute-paths` | | Absolute instead of relative paths | `false` |
 | `--no-links` | | Disable `path:line:column` format | |
 
-The JSON output exposes all ten keys: `target`, `targetAbsolute`, `scannedFiles`,
+The JSON output exposes all twelve keys: `target`, `targetAbsolute`, `scannedFiles`,
 `directDependents`, `dependents`, `routes` (each with `path`, `absolutePath`, and a `chain` array
-from route to target), `routePatterns`, `targetIsRoute`, `granularity`, and `granularityNote`.
+from route to target), `coveringTests`, `routePatterns`, `testPatterns`, `targetIsRoute`,
+`granularity`, and `granularityNote`.
+
+### Tests are not blast radius — they are coverage
+
+A test file that imports the target is a genuine reverse dependency, but it is not something a
+change can *break* in the sense that matters, and counting tests destroys the answer: on one real
+Go backend, `impact` reported 120 impacted routes of which **116 were `_test.go` files**. The four
+real entry points were buried under them, and the test files sorted first, so the whole first
+screen was noise.
+
+So `impact` splits its reverse-dependency set in two:
+
+| Field | Contains | Answers |
+|-------|----------|---------|
+| `dependents`, `directDependents`, `routes` | production code only | what could break |
+| `coveringTests` | test files reaching the target | what already exercises it, so what to re-run |
+
+The split happens **after** the graph is built, never by excluding tests from the scan — an
+excluded file cannot be reported. `testPatterns` says how the two were told apart; it defaults to
+the conventions of the four supported languages (`**/*_test.go`, `**/*.test.*`, `**/*.spec.*`,
+`**/test_*.py`, `**/*Test.php`, `**/tests/**`, …). `--tests <glob...>` replaces that list
+entirely for a project that names tests differently.
+
+```bash
+# What breaks, and what already covers it
+spaghetti-compass impact internal/notify/sender.go -c . --json | jq '{dependents, coveringTests}'
+```
 
 ### Customizing what counts as a "route"
 

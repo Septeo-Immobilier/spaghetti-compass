@@ -225,3 +225,74 @@ describe('ImpactAnalyzer — routes[].chain determinism (H1)', () => {
     }
   });
 });
+
+describe('ImpactAnalyzer — test files are covering tests, not blast radius', () => {
+  const goFixtures = path.join(repoRoot, 'fixtures/go');
+
+  function goCtx(): ContextInfo {
+    return {
+      rootPath: goFixtures,
+      projectRoot: goFixtures,
+      includePatterns: ['**/*.go'],
+      excludePatterns: [],
+    };
+  }
+
+  const senderGo = path.join(goFixtures, 'internal/notify/sender.go');
+  const routes = ['**/cmd/**/main.go'];
+
+  it('keeps a _test.go importer out of dependents and directDependents', () => {
+    const result = new ImpactAnalyzer(goCtx()).analyze(senderGo, { routePatterns: routes });
+
+    // cmd/notifier/main_test.go imports internal/notify, so it IS a reverse
+    // dependency — but it must never inflate the blast radius.
+    expect(result.dependents).not.toContain('cmd/notifier/main_test.go');
+    expect(result.directDependents).not.toContain('cmd/notifier/main_test.go');
+    expect(result.dependents).toContain('cmd/notifier/main.go');
+  });
+
+  it('reports that same file as a covering test', () => {
+    const result = new ImpactAnalyzer(goCtx()).analyze(senderGo, { routePatterns: routes });
+
+    expect(result.coveringTests).toContain('cmd/notifier/main_test.go');
+  });
+
+  it('never lets a test file be reported as a route', () => {
+    // A route glob wide enough to match the test file must still not promote
+    // it to an entry point: a test is not an entry point, whatever it is named.
+    const result = new ImpactAnalyzer(goCtx()).analyze(senderGo, {
+      routePatterns: ['**/cmd/**/*.go'],
+    });
+
+    expect(result.routes.map((r) => r.path)).not.toContain('cmd/notifier/main_test.go');
+    expect(result.routes.map((r) => r.path)).toContain('cmd/notifier/main.go');
+  });
+
+  it('exposes the patterns it used to classify tests', () => {
+    const result = new ImpactAnalyzer(goCtx()).analyze(senderGo, { routePatterns: routes });
+
+    expect(result.testPatterns).toContain('**/*_test.go');
+  });
+
+  it('lets --tests replace the built-in list entirely', () => {
+    // With a pattern that matches nothing, the test file falls back into the
+    // production set — proving the classification is driven by the option and
+    // not by a hardcoded suffix check.
+    const result = new ImpactAnalyzer(goCtx()).analyze(senderGo, {
+      routePatterns: routes,
+      testPatterns: ['**/nothing-matches-this/**'],
+    });
+
+    expect(result.coveringTests).toEqual([]);
+    expect(result.dependents).toContain('cmd/notifier/main_test.go');
+  });
+
+  it('makes the Go granularity note truthful about non-test files', () => {
+    const result = new ImpactAnalyzer(goCtx()).analyze(senderGo, { routePatterns: routes });
+
+    // The note has always claimed "every non-test file"; the split is what
+    // finally makes that claim match the reported set.
+    expect(result.granularityNote).toContain('every non-test file');
+    expect(result.dependents.every((d) => !d.endsWith('_test.go'))).toBe(true);
+  });
+});

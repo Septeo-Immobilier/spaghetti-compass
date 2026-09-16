@@ -294,6 +294,10 @@ program
     '--routes <glob...>',
     'Globs identifying routes / entry points (overrides config/route-patterns.txt)'
   )
+  .option(
+    '--tests <glob...>',
+    'Globs identifying test files, kept out of the blast radius and reported as coveringTests (replaces the built-in list)'
+  )
   .option('-i, --include <glob...>', 'Include patterns (default: **/*.ts, **/*.js, **/*.py, **/*.php, **/*.go)')
   .option('-e, --exclude <glob...>', 'Exclude patterns (default: **/node_modules/**)')
   .option('-t, --tsconfig <path>', 'Path to tsconfig.json (default: auto-discover)')
@@ -323,7 +327,11 @@ program
       const exclude =
         options.exclude && options.exclude.length > 0
           ? options.exclude
-          : ['**/node_modules/**', '**/dist/**', '**/*.test.*', '**/*.spec.*', '**/vendor/**', '**/.gomodcache/**'];
+          // Test files are deliberately NOT excluded here: ImpactAnalyzer
+          // classifies them into `coveringTests` instead, which is only
+          // possible if they were scanned. Excluding them destroyed the
+          // "what already covers this change?" answer before it existed.
+          : ['**/node_modules/**', '**/dist/**', '**/vendor/**', '**/.gomodcache/**'];
 
       const context = createContext(contextPath, include, exclude);
 
@@ -368,8 +376,12 @@ program
           ? options.routes
           : loadDefaultRoutePatterns();
 
+      // `--tests` replaces the built-in list entirely, like `--routes`.
+      const testPatterns =
+        options.tests && options.tests.length > 0 ? options.tests : undefined;
+
       const analyzer = new ImpactAnalyzer(context);
-      const result = analyzer.analyze(entryPath, { routePatterns });
+      const result = analyzer.analyze(entryPath, { routePatterns, testPatterns });
 
       // Emitted exactly once per invocation, in both --json and text mode (FR-007, FR-008;
       // contracts/impact-cli.md §6): the guard is granularity alone, not options.json.

@@ -122,8 +122,27 @@ In each JSON output:
 - `dependents`: all transitive dependents (the real blast radius).
 - `granularity`: `"file"` or `"package"` — how precisely the answer is scoped. Read it before you trust a count.
 - `granularityNote`: the one-line caveat when `granularity` is `"package"`; `null` otherwise.
+- `coveringTests`: the test files that reach the target — **what to re-run**, kept deliberately out of the three fields above.
 
-**How to use it in review**: for each changed file, cite the impacted routes and verify the tests / acceptance criteria actually cover those entry points. If `routes` is empty while dependents exist, either the change is purely internal, or the route patterns don't match (see `--routes` / `config/route-patterns.txt`).
+**How to use it in review**: for each changed file, cite the impacted routes, then read `coveringTests` to name the tests that already exercise them — that pair is the whole review answer, "what could break" and "what proves it still works". If `routes` is empty while dependents exist, either the change is purely internal, or the route patterns don't match (see `--routes` / `config/route-patterns.txt`).
+
+### Two questions, two fields — never mix them
+
+A test file that imports the target **is** a reverse dependency, and reporting it as blast radius
+is how this tool used to lie. Measured on a real Go backend: 120 impacted routes, of which 116
+were `_test.go` files, the four real entry points buried underneath and the tests sorted first.
+
+So the reverse set is split, *after* the graph is built rather than by excluding tests from the
+scan — an excluded file cannot be reported at all:
+
+| Field | Holds | Answers |
+|-------|-------|---------|
+| `dependents`, `directDependents`, `routes` | production code only | what could break |
+| `coveringTests` | test files reaching the target | what to re-run |
+
+`testPatterns` reports how the two were told apart. `--tests <glob...>` replaces that list for a
+project whose tests are named otherwise — and like `--routes`, `--include` and `--exclude`, it
+**replaces**, never extends.
 
 ### Reading an empty answer on Go — never as a proof
 
@@ -351,10 +370,11 @@ Supported extensions: `.ts`, `.tsx`, `.js`, `.jsx`, `.mjs`, `.cjs`, `.py`, `.pyi
 - `-r, --root <path>` — project root (default: nearest `package.json`; failing that, the tsconfig's directory).
 - `-i, --include <glob...>` / `-e, --exclude <glob...>` — scan filters.
 - `--routes <glob...>` (impact) — define route patterns (else `config/route-patterns.txt`).
+- `--tests <glob...>` (impact) — define what counts as a test file; they leave the blast radius and land in `coveringTests`.
 - `--absolute-paths` / `--no-links` — path rendering.
 - `--hyperlinks` (explore) — OSC 8 terminal hyperlinks.
 
 **Exit codes — `explore` and `impact`**: `0` success · `1` entry file **or `--tsconfig` file** not found, and also every Commander usage error (unknown option, missing argument) · `2` context directory **or `--root`** not found, or not a directory · `3` any error escaping the command — for `explore`, also an entry that parsed to zero nodes · `4` function not found, `explore` only. Three traps: `4` is checked **before** `3`, so `explore file.ts:fn` yielding zero nodes exits `4`; an empty result is `0` in every language; and a *scanned* file whose parser throws does not raise `3` — `impact` swallows it and drops that file's edges. `doctor` exits `3` if the report throws and `0` otherwise; see above for why it cannot currently return `1`.
 
 **JSON schema — `explore`**: `nodes`, `edges`, `stats.circularDependencies`, `entryPoint`.
-**JSON schema — `impact`**: `target`, `targetAbsolute`, `scannedFiles`, `directDependents`, `dependents`, `routes` (each `path`, `absolutePath`, `chain`), `routePatterns`, `targetIsRoute`, `granularity`, `granularityNote`. All ten keys, verified against a live `--json` run.
+**JSON schema — `impact`**: `target`, `targetAbsolute`, `scannedFiles`, `directDependents`, `dependents`, `routes` (each `path`, `absolutePath`, `chain`), `coveringTests`, `routePatterns`, `testPatterns`, `targetIsRoute`, `granularity`, `granularityNote`. All twelve keys, verified against a live `--json` run.

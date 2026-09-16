@@ -23,7 +23,9 @@ function baseResult(overrides: Partial<ImpactResult>): ImpactResult {
     directDependents: [],
     dependents: [],
     routes: [],
+    coveringTests: [],
     routePatterns: ['**/main.ts'],
+    testPatterns: ['**/*_test.go'],
     targetIsRoute: false,
     granularity: 'file',
     granularityNote: null,
@@ -70,5 +72,42 @@ describe('formatImpactText — granularity-aware empty result', () => {
     });
 
     expect(formatImpactText(packageResult)).toBe(formatImpactText(fileResult));
+  });
+});
+
+describe('formatImpactText — covering tests section', () => {
+  it('renders the covering tests after the dependent lists', () => {
+    const output = formatImpactText(
+      baseResult({
+        dependents: ['cmd/app/main.go'],
+        directDependents: ['cmd/app/main.go'],
+        coveringTests: ['cmd/app/main_test.go'],
+      })
+    );
+
+    expect(output).toContain('🧪 COVERING TESTS (1, re-run these):');
+    expect(output).toContain('cmd/app/main_test.go:1:1');
+    expect(output.indexOf('ALL TRANSITIVE DEPENDENTS')).toBeLessThan(
+      output.indexOf('COVERING TESTS')
+    );
+  });
+
+  it('still renders them when the blast radius itself is empty', () => {
+    // A target reached only by tests: no production dependent, but the one
+    // useful answer left is which tests touch it.
+    const output = formatImpactText(
+      baseResult({ dependents: [], coveringTests: ['pkg/leaf/leaf_test.go'] })
+    );
+
+    expect(output).toContain(LINE_EXACT_EMPTY);
+    expect(output).toContain('pkg/leaf/leaf_test.go:1:1');
+  });
+
+  it('adds nothing at all when no test covers the target', () => {
+    const output = formatImpactText(
+      baseResult({ dependents: ['cmd/app/main.go'], coveringTests: [] })
+    );
+
+    expect(output).not.toContain('COVERING TESTS');
   });
 });

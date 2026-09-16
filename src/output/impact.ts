@@ -20,6 +20,7 @@ const SYMBOLS = {
   route: '🚪',
   chain: '↳',
   dependent: '📄',
+  test: '🧪',
   branch: '├──',
   lastBranch: '└──',
 };
@@ -62,6 +63,10 @@ export function formatImpactText(result: ImpactResult, options: ImpactFormatOpti
         ? '⚠️  No file in the scanned context imports this package — but Go analysis is package-granular, so this is not a proof that the file is unused.'
         : '✅ No file depends on this target — modifying it impacts nothing else.'
     );
+    // A target reached only by tests has an empty blast radius and a non-empty
+    // coverage answer. Returning here without the tests would hide the one
+    // useful thing left to say about it.
+    appendCoveringTests(lines, result, options);
     return lines.join('\n');
   }
 
@@ -107,7 +112,31 @@ export function formatImpactText(result: ImpactResult, options: ImpactFormatOpti
     lines.push(`${branch} ${clickable(dep, options)}`);
   });
 
+  appendCoveringTests(lines, result, options);
+
   return lines.join('\n');
+}
+
+/**
+ * Appends the covering-tests section — the tests that already reach the target,
+ * and therefore the ones to re-run. Kept visually distinct from the dependent
+ * lists above, which carry production code only.
+ */
+function appendCoveringTests(
+  lines: string[],
+  result: ImpactResult,
+  options: ImpactFormatOptions
+): void {
+  if (result.coveringTests.length === 0) {
+    return;
+  }
+  lines.push('');
+  lines.push(`${SYMBOLS.test} COVERING TESTS (${result.coveringTests.length}, re-run these):`);
+  result.coveringTests.forEach((test, idx) => {
+    const isLast = idx === result.coveringTests.length - 1;
+    const branch = isLast ? SYMBOLS.lastBranch : SYMBOLS.branch;
+    lines.push(`${branch} ${clickable(test, options)}`);
+  });
 }
 
 /**

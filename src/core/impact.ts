@@ -13,6 +13,7 @@ import * as fs from 'node:fs';
 import type { ContextInfo } from '../types/index.js';
 import { PathResolver } from './resolver.js';
 import { ParserFactory } from '../parser/index.js';
+import { DEFAULT_TEST_PATTERNS } from '../config/test-patterns.js';
 
 /** A route (entry point) impacted by a change to the target file. */
 export interface ImpactRoute {
@@ -35,14 +36,28 @@ export interface ImpactResult {
   targetAbsolute: string;
   /** Number of files scanned in the context */
   scannedFiles: number;
-  /** Files that directly import the target (relative, sorted) */
+  /**
+   * Files that directly import the target (relative, sorted).
+   * Production code only — test files are reported in `coveringTests`.
+   */
   directDependents: string[];
-  /** All files that transitively depend on the target (relative, sorted) */
+  /**
+   * All files that transitively depend on the target (relative, sorted).
+   * Production code only — test files are reported in `coveringTests`.
+   */
   dependents: string[];
   /** Routes / entry points impacted, with the chain to the target */
   routes: ImpactRoute[];
+  /**
+   * Test files that transitively reach the target (relative, sorted): what
+   * already exercises the blast radius, and therefore what to re-run.
+   * Deliberately kept out of `dependents` / `directDependents` / `routes`.
+   */
+  coveringTests: string[];
   /** Patterns used to identify routes */
   routePatterns: string[];
+  /** Patterns used to tell a test file from production code */
+  testPatterns: string[];
   /** true if the target itself matches a route pattern */
   targetIsRoute: boolean;
   /**
@@ -57,6 +72,11 @@ export interface ImpactResult {
 export interface ImpactOptions {
   /** Globs identifying routes / entry points (e.g. **\/*.controller.ts) */
   routePatterns: string[];
+  /**
+   * Globs identifying test files (e.g. **\/*_test.go).
+   * Defaults to DEFAULT_TEST_PATTERNS when omitted.
+   */
+  testPatterns?: string[];
 }
 
 /**
@@ -123,9 +143,21 @@ export class ImpactAnalyzer {
     const dependentSet = new Set(parent.keys());
     dependentSet.delete(targetAbsolute);
 
-    // 4. Identify the impacted routes among the dependents.
-    const routes: ImpactRoute[] = [];
+    // 4. Split the reverse-dependency set: production code carries the blast
+    //    radius, test files answer the separate "what already covers this?"
+    //    question. The split happens HERE rather than at scan time on purpose —
+    //    a test file excluded from the walk could not be reported at all.
+    const testPatterns = options.testPatterns ?? [...DEFAULT_TEST_PATTERNS];
+    const productionSet = new Set<string>();
+    const testSet = new Set<string>();
     for (const dep of dependentSet) {
+      (this.matchesAnyPattern(dep, testPatterns) ? testSet : productionSet).add(dep);
+    }
+
+    // 5. Identify the impacted routes among the production dependents. A test
+    //    file is never an entry point, whatever the route patterns say.
+    const routes: ImpactRoute[] = [];
+    for (const dep of productionSet) {
       if (this.matchesAnyPattern(dep, options.routePatterns)) {
         routes.push({
           path: this.rel(dep),
@@ -136,8 +168,12 @@ export class ImpactAnalyzer {
     }
 
     routes.sort((a, b) => a.path.localeCompare(b.path));
-    const dependents = [...dependentSet].map((f) => this.rel(f)).sort();
-    const direct = [...directDependents].map((f) => this.rel(f)).sort();
+    const dependents = [...productionSet].map((f) => this.rel(f)).sort();
+    const coveringTests = [...testSet].map((f) => this.rel(f)).sort();
+    const direct = [...directDependents]
+      .filter((f) => !this.matchesAnyPattern(f, testPatterns))
+      .map((f) => this.rel(f))
+      .sort();
 
     // A Go target's transitive closure is entirely Go: resolveInternalImports
     // only emits an edge when the importer's own parser resolved the specifier,
@@ -146,7 +182,11 @@ export class ImpactAnalyzer {
     const isGoTarget = this.parserFactory.getParser(targetAbsolute).name === 'go';
     const granularity: 'file' | 'package' = isGoTarget ? 'package' : 'file';
     const granularityNote = isGoTarget
-      ? this.buildGoGranularityNote(targetAbsolute, dependents.length > 0)
+      // Keyed on the FULL reverse set, tests included: the empty-case wording
+      // claims nothing imports the package, which a test-only importer would
+      // falsify. The non-empty wording speaks of non-test files, which the
+      // split above has now made literally true.
+      ? this.buildGoGranularityNote(targetAbsolute, dependentSet.size > 0)
       : null;
 
     return {
@@ -156,7 +196,9 @@ export class ImpactAnalyzer {
       directDependents: direct,
       dependents,
       routes,
+      coveringTests,
       routePatterns: options.routePatterns,
+      testPatterns,
       targetIsRoute: this.matchesAnyPattern(targetAbsolute, options.routePatterns),
       granularity,
       granularityNote,
