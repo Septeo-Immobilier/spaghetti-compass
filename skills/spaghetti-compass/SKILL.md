@@ -59,6 +59,8 @@ MISS gopls                install with: go install golang.org/x/tools/gopls@late
 
 A `MISS` never blocks an analysis — it degrades the precision of **`explore`**, and the warning goes to **stderr** so `--json` on stdout stays parseable. Install the matching LSP before any precision-sensitive `explore` on PHP, Python, or Go. It changes nothing for `impact`, which starts no language server and reads every file through the parsers regardless.
 
+**Targeting `.go`? Read [`references/go-gopls.md`](references/go-gopls.md) first.** An `OK gopls` row is not sufficient: Go resolution needs `go` on the PATH as well, and without it the output is identical to having no language server — measured, 1 resolved edge out of 13. That note also gives the signal that distinguishes the two, which is not the node count.
+
 **Install** (host global binary): `npm i -g @septeo-immo/spaghetti-compass`.
 
 **Host vs Docker execution rule** — a Docker-only policy applies to language toolchains (`node`/`npm`/`npx`/`python`/…), but:
