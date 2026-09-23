@@ -148,6 +148,44 @@ describe('T003 — package-vs-file asymmetry (internal/notify fixture)', () => {
   });
 });
 
+describe('Same-package Go _test.go files appear in coveringTests', () => {
+  function goCtx2(): ContextInfo {
+    return {
+      rootPath: goFixtures,
+      projectRoot: goFixtures,
+      includePatterns: ['**/*.go'],
+      excludePatterns: [],
+    };
+  }
+
+  const senderGo = path.join(goFixtures, 'internal/notify/sender.go');
+  const routes = ['**/cmd/**/main.go'];
+
+  it('includes sender_test.go (same package, no import edge) in coveringTests', () => {
+    const result = new ImpactAnalyzer(goCtx2()).analyze(senderGo, { routePatterns: routes });
+
+    expect(result.coveringTests).toContain('internal/notify/sender_test.go');
+  });
+
+  it('keeps same-package test files out of production dependents and directDependents', () => {
+    const result = new ImpactAnalyzer(goCtx2()).analyze(senderGo, { routePatterns: routes });
+
+    expect(result.dependents).not.toContain('internal/notify/sender_test.go');
+    expect(result.directDependents).not.toContain('internal/notify/sender_test.go');
+  });
+
+  it('includes same-package test files of transitive dependents too', () => {
+    // aaa_marker.go is in the same package as sender.go; both share the same
+    // dependents set (package-granular resolution). A change to sender.go
+    // indirectly affects cmd/notifier/main.go, whose same-package test file
+    // (main_test.go) already appears via import edge — verifying it is still
+    // in coveringTests after the expansion.
+    const result = new ImpactAnalyzer(goCtx2()).analyze(senderGo, { routePatterns: routes });
+
+    expect(result.coveringTests).toContain('cmd/notifier/main_test.go');
+  });
+});
+
 describe('T008 — granularity marker on Go targets (US2, FR-004)', () => {
   it('non-empty Go target (internal/notify/sender.go) carries granularity: package with a non-null note', () => {
     const analyzer = new ImpactAnalyzer(goContext());
