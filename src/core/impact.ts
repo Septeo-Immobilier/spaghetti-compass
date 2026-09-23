@@ -143,6 +143,28 @@ export class ImpactAnalyzer {
     const dependentSet = new Set(parent.keys());
     dependentSet.delete(targetAbsolute);
 
+    // 3b. Same-package Go _test.go files share the compilation unit without
+    //     an import edge: `package foo`'s tests access every symbol directly.
+    //     Expand the dependent set now, before the split, so the classification
+    //     below routes them to coveringTests.
+    const isGoTarget = this.parserFactory.getParser(targetAbsolute).name === 'go';
+    if (isGoTarget) {
+      const testFilesByDir = this.indexGoTestFiles(files);
+      const goSources = [targetAbsolute, ...dependentSet].filter(
+        (f) => f.endsWith('.go') && !f.endsWith('_test.go'),
+      );
+      for (const src of goSources) {
+        const siblings = testFilesByDir.get(path.dirname(src));
+        if (siblings) {
+          for (const t of siblings) {
+            if (t !== targetAbsolute && !dependentSet.has(t)) {
+              dependentSet.add(t);
+            }
+          }
+        }
+      }
+    }
+
     // 4. Split the reverse-dependency set: production code carries the blast
     //    radius, test files answer the separate "what already covers this?"
     //    question. The split happens HERE rather than at scan time on purpose —
@@ -175,11 +197,7 @@ export class ImpactAnalyzer {
       .map((f) => this.rel(f))
       .sort();
 
-    // A Go target's transitive closure is entirely Go: resolveInternalImports
-    // only emits an edge when the importer's own parser resolved the specifier,
-    // so a Go importer only ever points at Go files. This makes it sound to
-    // derive granularity once, from the target's parser, rather than per edge.
-    const isGoTarget = this.parserFactory.getParser(targetAbsolute).name === 'go';
+    // isGoTarget was computed in step 3b above.
     const granularity: 'file' | 'package' = isGoTarget ? 'package' : 'file';
     const granularityNote = isGoTarget
       // Keyed on the FULL reverse set, tests included: the empty-case wording
@@ -298,6 +316,25 @@ export class ImpactAnalyzer {
   /** Path relative to the context. */
   private rel(absolutePath: string): string {
     return this.resolver.getRelativePath(absolutePath);
+  }
+
+  /**
+   * Indexes _test.go files by directory from the scan list.
+   */
+  private indexGoTestFiles(files: string[]): Map<string, string[]> {
+    const index = new Map<string, string[]>();
+    for (const file of files) {
+      if (file.endsWith('_test.go')) {
+        const dir = path.dirname(file);
+        let list = index.get(dir);
+        if (!list) {
+          list = [];
+          index.set(dir, list);
+        }
+        list.push(file);
+      }
+    }
+    return index;
   }
 
   /**
