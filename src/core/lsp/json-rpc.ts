@@ -257,10 +257,17 @@ export function pathToUri(filePath: string): string {
  * Convertit un URI en chemin de fichier
  */
 export function uriToPath(uri: string): string {
-  const filePath = uri.replace(/^file:\/\//, '');
+  let filePath = uri.replace(/^file:\/\//, '');
+  try {
+    filePath = decodeURIComponent(filePath);
+  } catch {
+    // Malformed percent sequence: keep the raw string
+  }
   // Sur Windows, enlever le / initial avant la lettre de lecteur
-  if (filePath.match(/^\/[a-zA-Z]:/)) {
-    return filePath.substring(1);
+  // et mettre la lettre en majuscule (comme path.resolve)
+  const drive = filePath.match(/^\/([a-zA-Z]):/);
+  if (drive) {
+    return drive[1].toUpperCase() + filePath.substring(2);
   }
   return filePath;
 }

@@ -55,13 +55,29 @@ export class PythonLspProvider implements LspProvider {
     // Le processus sera démarré à la première requête
   }
 
-  private async ensureProcess(): Promise<boolean> {
-    const process = await this.processManager.getOrCreateProcess(
+  /**
+   * Picks the command used to launch Pyright: the direct binary when it is in
+   * PATH, `npx pyright-langserver` otherwise. Single source for every spawn site.
+   */
+  private getLaunchCommand(): { command: string; args: string[] } {
+    if (checkLspForLanguage('python').available) {
+      return { command: 'pyright-langserver', args: ['--stdio'] };
+    }
+    return { command: 'npx', args: ['pyright-langserver', '--stdio'] };
+  }
+
+  private async getProcess() {
+    const { command, args } = this.getLaunchCommand();
+    return this.processManager.getOrCreateProcess(
       this.processKey,
-      'npx',
-      ['pyright-langserver', '--stdio'],
+      command,
+      args,
       this.projectRoot
     );
+  }
+
+  private async ensureProcess(): Promise<boolean> {
+    const process = await this.getProcess();
     return process !== null;
   }
 
@@ -97,12 +113,7 @@ export class PythonLspProvider implements LspProvider {
       return null;
     }
 
-    const process = await this.processManager.getOrCreateProcess(
-      this.processKey,
-      'npx',
-      ['pyright-langserver', '--stdio'],
-      this.projectRoot
-    );
+    const process = await this.getProcess();
     if (!process) {
       return null;
     }

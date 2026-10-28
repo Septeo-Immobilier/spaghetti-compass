@@ -17,6 +17,7 @@ import {
   type LspLocation,
   type TextDocumentItem,
 } from './json-rpc.js';
+import { resolveSpawnCommand } from './spawn-command.js';
 
 /**
  * Configuration du process manager
@@ -41,6 +42,8 @@ interface LspProcess {
     timeout: NodeJS.Timeout;
   }>;
   buffer: string;
+  /** Set once the process exited or failed to spawn */
+  dead: boolean;
 }
 
 /**
@@ -49,6 +52,8 @@ interface LspProcess {
 export class LspProcessManager {
   /** Processus actifs par clé (ex: "php:/path/to/project") */
   private processes: Map<string, LspProcess> = new Map();
+  /** Clés dont le démarrage a échoué (pas de nouvelle tentative) */
+  private failedKeys: Set<string> = new Set();
   /** Configuration */
   private config: ProcessManagerConfig;
 
@@ -74,11 +79,18 @@ export class LspProcessManager {
       return existing;
     }
 
+    // Ne pas retenter un démarrage déjà échoué
+    if (this.failedKeys.has(key)) {
+      return null;
+    }
+
     // Démarrer un nouveau processus
     try {
       const lspProcess = await this.startProcess(key, command, args, projectRoot);
       return lspProcess;
     } catch (error) {
+      this.failedKeys.add(key);
+      this.processes.delete(key);
       if (this.config.debug) {
         console.error(`[LSP] Failed to start ${command}:`, error);
       }
@@ -99,9 +111,13 @@ export class LspProcessManager {
       console.log(`[LSP] Starting ${command} ${args.join(' ')}`);
     }
 
-    const process = spawn(command, args, {
+    // May throw synchronously (unsafe batch-file args, EINVAL): caller catches
+    const resolved = resolveSpawnCommand(command, args);
+    const process = spawn(resolved.command, resolved.args, {
       cwd: projectRoot,
       stdio: ['pipe', 'pipe', 'pipe'],
+      shell: resolved.shell,
+      windowsHide: true,
     });
 
     const lspProcess: LspProcess = {
@@ -110,7 +126,33 @@ export class LspProcessManager {
       nextId: 1,
       pending: new Map(),
       buffer: '',
+      dead: false,
     };
+
+    const failPending = (error: Error): void => {
+      lspProcess.dead = true;
+      this.processes.delete(key);
+      for (const [, pending] of lspProcess.pending) {
+        clearTimeout(pending.timeout);
+        pending.reject(error);
+      }
+      lspProcess.pending.clear();
+    };
+
+    // Spawn failures (ENOENT...) arrive asynchronously; never leave them unhandled
+    process.on('error', (error) => {
+      if (this.config.debug) {
+        console.error(`[LSP] Process error:`, error);
+      }
+      failPending(error);
+    });
+
+    // EPIPE when the child died before we finished writing
+    process.stdin?.on('error', (error) => {
+      if (this.config.debug) {
+        console.error(`[LSP] stdin error:`, error);
+      }
+    });
 
     // Gérer les données reçues
     process.stdout?.on('data', (data: Buffer) => {
@@ -129,13 +171,8 @@ export class LspProcessManager {
       if (this.config.debug) {
         console.log(`[LSP] Process exited with code ${code}`);
       }
-      this.processes.delete(key);
       // Rejeter toutes les requêtes en attente
-      for (const [, pending] of lspProcess.pending) {
-        clearTimeout(pending.timeout);
-        pending.reject(new Error(`LSP process exited with code ${code}`));
-      }
-      lspProcess.pending.clear();
+      failPending(new Error(`LSP process exited with code ${code}`));
     });
 
     // Enregistrer le processus
@@ -195,6 +232,11 @@ export class LspProcessManager {
     }
 
     return new Promise<T>((resolve, reject) => {
+      if (lspProcess.dead) {
+        reject(new Error(`LSP process is not running: ${method}`));
+        return;
+      }
+
       const timeout = setTimeout(() => {
         lspProcess.pending.delete(id);
         reject(new Error(`LSP request timeout: ${method}`));
