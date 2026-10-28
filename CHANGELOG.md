@@ -1,3 +1,14 @@
+## [1.1.5](https://github.com/Septeo-Immobilier/spaghetti-compass/compare/v1.1.4...v1.1.5) (2026-10-28)
+
+### 🐛 Bug Fixes
+
+* **lsp:** percent-decode file URIs returned by LSP servers ([5760496](https://github.com/Septeo-Immobilier/spaghetti-compass/commit/5760496cf10dc60a5d3a1be7ef495f91905edcbd))
+* **lsp:** spawn npm-installed LSP servers on native Windows ([fbfdf77](https://github.com/Septeo-Immobilier/spaghetti-compass/commit/fbfdf77d55535ffbe513a6f25b7f564c9d5b1c3d))
+
+### 📚 Documentation
+
+* **skill:** an OK gopls row does not mean Go resolution works ([563e302](https://github.com/Septeo-Immobilier/spaghetti-compass/commit/563e3026df8a44275ff772967881342b2425539b))
+
 ## [1.1.4](https://github.com/Septeo-Immobilier/spaghetti-compass/compare/v1.1.3...v1.1.4) (2026-09-16)
 
 ### 🐛 Bug Fixes
