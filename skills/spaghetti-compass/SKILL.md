@@ -169,6 +169,14 @@ TypeScript, JavaScript, Python, and PHP targets report `granularity: "file"` —
 
 **Why not grep?** Grep searches text (and matches comments, strings, false positives). `spaghetti-compass` resolves the **real** definitions and calls via LSP, follows transitivity, and flags cycles.
 
+**Native `LSP` tool first, when it is available** — Claude Code's own `LSP` tool (official plugins `typescript-lsp`, `pyright-lsp`, `php-lsp`, `gopls-lsp` from the `claude-plugins-official` marketplace, with their language-server binaries installed):
+
+- Prefer it for **one-level** questions: definition (`goToDefinition`), references (`findReferences`), who calls / what is called (`incomingCalls` / `outgoingCalls`), symbols (`documentSymbol`, `workspaceSymbol`).
+- Switch to the `spaghetti-compass` CLI as soon as the question is **transitive**: dependency tree, cycles, reverse impact, routes, end-to-end narration.
+- Observed limits of the native tool: single level only (no transitivity, no cycles, no routes); files outside the session workspace are not resolved; PHP/Intelephense does not implement call hierarchy (`Unhandled method textDocument/prepareCallHierarchy`), so use `findReferences` instead; the TypeScript server needs `typescript` in the project's `node_modules`.
+
+The plugins only declare stdio servers that Claude Code spawns itself, so the CLI cannot attach to that session. What the two share is the language-server binaries on `PATH` (the CLI looks them up on `PATH` only): installing a binary once serves both.
+
 ```bash
 # Dependencies of a file (transitive tree)
 spaghetti-compass explore src/main.ts -c src/ --json
@@ -176,6 +184,10 @@ spaghetti-compass explore src/main.ts -c src/ --json
 # Call-graph of a function / method
 spaghetti-compass explore src/services/auth.ts:login -c src/ --json
 spaghetti-compass explore src/core/Analyzer.ts:Analyzer.analyze -c src/ --json
+
+# Python / PHP entry: explore only scans **/*.ts, **/*.js, **/*.go by default, so pass -i
+# (impact already scans ts/js/py/php/go by default)
+spaghetti-compass explore app/services/auth.py:login -c app/ -i '**/*.py' --json
 
 # Direct dependencies only
 spaghetti-compass explore src/main.ts -c src/ --no-transitive --json
