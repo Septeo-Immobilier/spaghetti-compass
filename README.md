@@ -444,6 +444,18 @@ cp skills/spaghetti-compass/SKILL.md .claude/skills/spaghetti-compass/
 # or .cursor/skills/… , .agents/skills/… depending on your tool
 ```
 
+## MCP server
+
+For agents that speak MCP, [`mcp/`](mcp/README.md) wraps the CLI in task-oriented tools
+(`impact_of_file`, `impact_of_symbol`, `review_changed_files`, `trace_calls`,
+`explore_dependencies`, `doctor`) with LLM-friendly descriptions and compact answers. It is a layer
+over the CLI, not a second engine; the skill above stays valid.
+
+```bash
+cd mcp && npm install
+claude mcp add spaghetti-compass -- node "$(pwd)/server.mjs"
+```
+
 ## Options (`explore`)
 
 Every row below describes **`explore`**. `impact` has its own flag set and its own, wider

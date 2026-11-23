@@ -1,0 +1,23 @@
+{
+  "name": "@septeo-immo/spaghetti-compass-mcp",
+  "version": "0.1.0",
+  "private": true,
+  "description": "MCP server: an LLM-friendly layer over the spaghetti-compass CLI (impact, call tracing, dependency exploration)",
+  "type": "module",
+  "main": "server.mjs",
+  "bin": {
+    "spaghetti-compass-mcp": "server.mjs"
+  },
+  "scripts": {
+    "start": "node server.mjs",
+    "test": "node --test test/"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.2",
+    "zod": "^3.25.76"
+  }
+}

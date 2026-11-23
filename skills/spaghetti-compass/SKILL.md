@@ -25,6 +25,21 @@ The **text** output of `explore` and `impact` exposes clickable `path:line:col` 
 
 License: MIT. npm package: **`@septeo-immo/spaghetti-compass`** (Node >= 20). The unscoped name `spaghetti-compass` is **not** on the registry — only the binary it installs is called that.
 
+## MCP tools first, when the `spaghetti-compass` MCP server is connected
+
+The repo ships an MCP server (`mcp/`) that wraps this same CLI. When its tools are listed, prefer them: same engine, answers already reshaped (compact lists, `path:line`, caveats), no flag juggling.
+
+| Question | MCP tool | CLI equivalent |
+|----------|----------|----------------|
+| What breaks if I change file X? | `impact_of_file` | `impact X` |
+| Who uses symbol S of file X? | `impact_of_symbol` | `impact X`, then grep S in the dependents |
+| Review a branch: routes to re-test, tests to run | `review_changed_files` | the git-diff loop of Use-case 1 |
+| What does F call? | `trace_calls` | `explore X:F` |
+| Imports of X, cycles | `explore_dependencies` | `explore X` |
+| Environment check | `doctor` | `doctor` |
+
+Everything below (caveats on Go granularity, `coveringTests`, exit codes) applies unchanged to both. Without the MCP, use the CLI as documented below.
+
 ## Availability & install (OPTIONAL — degrade gracefully if absent)
 
 This tool is **optional**. Probe first; if it is unavailable, skip it and fall back to normal reasoning — never block on it.
