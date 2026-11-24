@@ -19,7 +19,7 @@
     "lint:fix": "eslint src --ext .ts --fix",
     "format": "prettier --write \"src/**/*.ts\"",
     "prepublishOnly": "npm run build",
-    "test:plugin": "node --test scripts/plugin/",
+    "test:plugin": "node --test scripts/plugin/build.test.mjs",
     "build:plugin": "node scripts/plugin/build.mjs"
   },
   "keywords": [

@@ -10,7 +10,7 @@
   },
   "scripts": {
     "start": "node server.mjs",
-    "test": "node --test test/"
+    "test": "node --test"
   },
   "engines": {
     "node": ">=20.0.0"
