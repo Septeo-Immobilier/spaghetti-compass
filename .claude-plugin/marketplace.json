@@ -1,0 +1,15 @@
+{
+  "name": "spaghetti-compass",
+  "owner": {
+    "name": "Septeo-Immobilier"
+  },
+  "description": "Semantic code navigation (impact analysis, call tracing, dependency graph) for AI agents.",
+  "plugins": [
+    {
+      "name": "spaghetti-compass",
+      "source": "./plugins/spaghetti-compass",
+      "description": "Explore, review and narrate code with language-server-backed impact analysis, call tracing and dependency graphs: MCP tools plus the usage skill.",
+      "version": "1.1.6"
+    }
+  ]
+}
