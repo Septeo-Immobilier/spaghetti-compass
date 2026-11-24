@@ -35,6 +35,15 @@ find the CLI itself. Launcher resolution order:
 
 ## Register it
 
+Easiest: the Claude Code plugin built by CI (`.github/workflows/publish-plugin.yml`, `scripts/plugin/`):
+
+```
+/plugin marketplace add https://github.com/Septeo-Immobilier/spaghetti-compass.git#dist
+/plugin install spaghetti-compass@spaghetti-compass
+```
+
+The plugin ships a single-file bundle of this server (SDK inlined, no `npm install`). Manually:
+
 Claude Code:
 
 ```bash
